@@ -23,7 +23,6 @@ cv.createTrackbar('Zoom', 'photobooth',0,100, nothing)
 #define video codec and capture
 fourcc = cv.VideoWriter_fourcc(*'XVID')
 
-#comment
 
 while vid.isOpened():
     ret, frame = vid.read()
