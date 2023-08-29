@@ -1,6 +1,10 @@
 import cv2 as cv
 import numpy as np
+from zoom_in import zoom_in
 from datetime import datetime
+
+def nothing(x):
+    pass
 
 #global variables
 isrecording = False
@@ -12,13 +16,17 @@ font = cv.FONT_HERSHEY_PLAIN
 vid = cv.VideoCapture(0)
 out = None
 
+#define track bar for zoom
+cv.namedWindow('photobooth')
+cv.createTrackbar('Zoom', 'photobooth',0,100, nothing)
 
 #define video codec and capture
 fourcc = cv.VideoWriter_fourcc(*'XVID')
 
-
 while vid.isOpened():
     ret, frame = vid.read()
+    z = (cv.getTrackbarPos('Zoom','photobooth')/10)+1
+    frame = zoom_in(frame,z)
     dim = frame.shape
     vid_height = dim[0]
     vid_width = dim[1]
@@ -50,7 +58,7 @@ while vid.isOpened():
     cv.putText(frame, 'V',(int(0.385*vid_width),int(0.92*vid_height)),font, 2, (255,255,255), 2, cv.LINE_AA)
     cv.putText(frame, 'C',(int(0.58*vid_width),int(0.92*vid_height)),font, 2, (255,255,255), 2, cv.LINE_AA)
 
-    cv.imshow('photobooth', frame)
+    cv.imshow('photobooth', zoom_in(frame,1))
 
 
     #processing key presses for proper actions
@@ -80,3 +88,5 @@ vid.release()
 if out is not None:
     out.release()
 cv.destroyAllWindows()
+
+
