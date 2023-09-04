@@ -44,6 +44,7 @@ blur_image = False
 flash_frame = False
 pic_number = 0
 vid_number = 0
+rotation_angle = 10 #degrees
 
 font = cv.FONT_HERSHEY_PLAIN
 #define video capture
@@ -53,7 +54,8 @@ out = None
 #define track bar for zoom and blur
 cv.namedWindow('photobooth')
 cv.createTrackbar('Zoom', 'photobooth',0,100, nothing)
-cv.createTrackbar('Blur','photobooth',5,30,nothing)
+cv.createTrackbar('BlurX','photobooth',5,30,nothing)
+cv.createTrackbar('BlurY','photobooth',5,30,nothing)
 
 
 #define video codec and capture
@@ -74,15 +76,29 @@ while vid.isOpened():
     vid_height = dim[0]
     vid_width = dim[1]
 
-    #add date and time to clean frame
+   #create frame copy to modify with non GUI elements.
     clean_frame = frame.copy()
+
+    # add blur to images before adding text
+    if blur_image:
+        gauss_sigmax = cv.getTrackbarPos('BlurX', 'photobooth')
+        gauss_sigmay = cv.getTrackbarPos('BlurY', 'photobooth')
+        clean_frame = cv.GaussianBlur(clean_frame, (7, 7), sigmaX=gauss_sigmax, sigmaY=gauss_sigmay)
+        frame = cv.GaussianBlur(frame, (7, 7), sigmaX=gauss_sigmax, sigmaY=gauss_sigmay)
+
+    # add color extraction to images
+
+    # add thresholding to images
+
+    # add date and time to clean frame
     now = datetime.now()
     time_string = now.strftime("%d/%m/%y, %H:%M:%S")
     file_time_string = now.strftime("%d_%m_%y_%H_%M_%S")
-    cv.putText(clean_frame, time_string, (int(0.4*vid_width), int(0.93*vid_height)), font, 2, (255,255,255), 2, cv.LINE_AA)
+    cv.putText(clean_frame, time_string, (int(0.7*vid_width), int(0.94*vid_height)), font, 1, (255,255,255), 1, cv.LINE_AA)
 
     #add ROI of date time display to upper left corner
-
+    date_roi = clean_frame[(int(0.94*vid_height)-15):(int(0.94*vid_height)+15), (int(0.7*vid_width)-10):(int(0.7*vid_width)+170),:]
+    clean_frame[0:30,vid_width-181:vid_width-1:,:] = date_roi
     #blends in opencv logo in top left
     #crop original image to size of logo
     cropped_image  = clean_frame[0:logo_shape[0], 0:logo_shape[1],:]
@@ -90,6 +106,9 @@ while vid.isOpened():
     clean_frame[0:logo_shape[0], 0:logo_shape[1],:] = blended_area
     # add red constant border
     clean_frame = cv.copyMakeBorder(clean_frame, 6, 6, 6, 6, cv.BORDER_CONSTANT, value=[0, 0, 255])
+
+    #add rotation to images
+
 
     # saves video frame here
     if isrecording:
