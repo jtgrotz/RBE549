@@ -56,6 +56,7 @@ cv.namedWindow('photobooth')
 cv.createTrackbar('Zoom', 'photobooth',0,100, nothing)
 cv.createTrackbar('BlurX','photobooth',5,30,nothing)
 cv.createTrackbar('BlurY','photobooth',5,30,nothing)
+cv.createTrackbar('Threshold','photobooth',127,255,nothing)
 
 
 #define video codec and capture
@@ -76,19 +77,33 @@ while vid.isOpened():
     vid_height = dim[0]
     vid_width = dim[1]
 
-   #create frame copy to modify with non GUI elements.
-    clean_frame = frame.copy()
-
     # add blur to images before adding text
     if blur_image:
         gauss_sigmax = cv.getTrackbarPos('BlurX', 'photobooth')
         gauss_sigmay = cv.getTrackbarPos('BlurY', 'photobooth')
-        clean_frame = cv.GaussianBlur(clean_frame, (7, 7), sigmaX=gauss_sigmax, sigmaY=gauss_sigmay)
         frame = cv.GaussianBlur(frame, (7, 7), sigmaX=gauss_sigmax, sigmaY=gauss_sigmay)
 
     # add color extraction to images
+    if threshold_image:
+        #convert frame to grayscale image and read and apply theshold value
+        gray_image = cv.cvtColor(frame,cv.COLOR_BGR2GRAY)
+        thresh_value = cv.getTrackbarPos('Threshold','photobooth')
+        ret, bin_thresh = cv.threshold(gray_image,thresh_value,255,cv.THRESH_BINARY)
+        #convert back to BGR image so colored GUI can be added.
+        BGR_thresh = cv.cvtColor(bin_thresh, cv.COLOR_GRAY2BGR)
+        frame = BGR_thresh
 
     # add thresholding to images
+    if extract_color:
+        #convert image to hsv space and define color limits and apply mask
+        hsv_frame = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
+        color_lower = np.array([10,95,150])
+        color_upper = np.array([90,215,240])
+        masked_frame = cv.inRange(hsv_frame,color_lower,color_upper)
+        frame = cv.bitwise_and(frame,frame,mask = masked_frame)
+
+    # create frame copy to modify with non GUI elements.
+    clean_frame = frame.copy()
 
     # add date and time to clean frame
     now = datetime.now()
