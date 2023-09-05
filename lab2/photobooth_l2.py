@@ -44,7 +44,6 @@ blur_image = False
 flash_frame = False
 pic_number = 0
 vid_number = 0
-rotation_angle = 10 #degrees
 
 font = cv.FONT_HERSHEY_PLAIN
 #define video capture
@@ -57,6 +56,7 @@ cv.createTrackbar('Zoom', 'photobooth',0,100, nothing)
 cv.createTrackbar('BlurX','photobooth',5,30,nothing)
 cv.createTrackbar('BlurY','photobooth',5,30,nothing)
 cv.createTrackbar('Threshold','photobooth',127,255,nothing)
+cv.createTrackbar("Angle",'photobooth',10,180,nothing)
 
 
 #define video codec and capture
@@ -100,8 +100,18 @@ while vid.isOpened():
         color_lower = np.array([10,95,150])
         color_upper = np.array([90,215,240])
         masked_frame = cv.inRange(hsv_frame,color_lower,color_upper)
+        #bitwise operation to only see extracted color.
         frame = cv.bitwise_and(frame,frame,mask = masked_frame)
 
+    # add rotation to images
+    if rotate_image:
+        #center of image for rotation matrix
+        center_x = int(vid_width/2)
+        center_y = int(vid_height/2)
+        rotation_angle = cv.getTrackbarPos('Angle','photobooth')
+        rotation_tf = cv.getRotationMatrix2D((center_x,center_y),rotation_angle,1)
+        #applies transformation matrix
+        frame = cv.warpAffine(frame,rotation_tf,(vid_width,vid_height))
     # create frame copy to modify with non GUI elements.
     clean_frame = frame.copy()
 
@@ -112,6 +122,7 @@ while vid.isOpened():
     cv.putText(clean_frame, time_string, (int(0.7*vid_width), int(0.94*vid_height)), font, 1, (255,255,255), 1, cv.LINE_AA)
 
     #add ROI of date time display to upper left corner
+    #doesnt work on rotated image
     date_roi = clean_frame[(int(0.94*vid_height)-15):(int(0.94*vid_height)+15), (int(0.7*vid_width)-10):(int(0.7*vid_width)+170),:]
     clean_frame[0:30,vid_width-181:vid_width-1:,:] = date_roi
     #blends in opencv logo in top left
@@ -121,8 +132,6 @@ while vid.isOpened():
     clean_frame[0:logo_shape[0], 0:logo_shape[1],:] = blended_area
     # add red constant border
     clean_frame = cv.copyMakeBorder(clean_frame, 6, 6, 6, 6, cv.BORDER_CONSTANT, value=[0, 0, 255])
-
-    #add rotation to images
 
 
     # saves video frame here
