@@ -1,8 +1,11 @@
 import cv2 as cv
 import numpy as np
 from datetime import datetime
+from matplotlib import pyplot as plt
+from custom_filters import custom_filters
 
 #Funtion definitions for main loop
+cf = custom_filters()
 
 #function to do nothing as callback for trackbar functions
 def nothing(x):
@@ -30,9 +33,29 @@ def zoom_in(image, zoom_level):
 
     return image
 
+def show_four(image):
+    #original image converted to grayscale
+    pre_blur = True
+    gray_image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    plt.subplot(2,2,1), plt.imshow(gray_image,cmap = 'gray')
+    plt.title('Original'),plt.xticks([]),plt.yticks([])
 
+    #custom laplace function takes BGR image
+    lap_image = cf.my_laplace_filter(image,pre_blur)
+    plt.subplot(2, 2, 2), plt.imshow(lap_image, cmap='gray')
+    plt.title('Laplacian'), plt.xticks([]), plt.yticks([])
 
+    #custom sobel in x direction function takes BGR image
+    SobelX_image = cf.my_sobel_filter(image,True, False, pre_blur)
+    plt.subplot(2, 2, 3), plt.imshow(SobelX_image, cmap='gray')
+    plt.title('Sobel X'), plt.xticks([]), plt.yticks([])
 
+    #custom sobel in y direction function takes BGR image
+    SobelY_image = cf.my_sobel_filter(image, False, True, pre_blur)
+    plt.subplot(2, 2, 4), plt.imshow(SobelY_image, cmap='gray')
+    plt.title('Sobel Y'), plt.xticks([]), plt.yticks([])
+
+    plt.show()
 
 #global variables
 #logic flags
@@ -264,6 +287,11 @@ while vid.isOpened():
                 sx = 0
             else:
                 sobel_y = True
+
+    elif k == ord('4'):
+        #if four is pressed, generates 4 tile image and holds until window is closed.
+        show_four(clean_frame)
+
 
 #ensure video and recording are ended properly.
 vid.release()
