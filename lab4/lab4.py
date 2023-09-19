@@ -161,32 +161,32 @@ sift = cv.SIFT_create()
 #original
 k_orig = sift.detect(gray_org,None)
 s_orig = image.copy()
-s_orig = cv.drawKeypoints(image, k_orig, s_orig, color=[0,0,255])
+s_orig = cv.drawKeypoints(image, k_orig, s_orig, color=[0,255,0])
 
 #rotated
 k_rot = sift.detect(gray_rot,None)
 s_rot = rotated_image.copy()
-s_rot = cv.drawKeypoints(rotated_image,k_rot,s_rot, color=[0,0,255])
+s_rot = cv.drawKeypoints(rotated_image,k_rot,s_rot, color=[0,255,0])
 
 #scaled up
 k_sup = sift.detect(gray_sup,None)
 s_sup = scale_up_image.copy()
-s_sup = cv.drawKeypoints(scale_up_image,k_sup,s_sup,color=[0,0,255])
+s_sup = cv.drawKeypoints(scale_up_image,k_sup,s_sup,color=[0,255,0])
 
 #scaled down
 k_dwn = sift.detect(gray_sdwn,None)
 s_dwn = scale_down_image.copy()
-s_dwn = cv.drawKeypoints(scale_down_image,k_dwn,s_dwn,color=[0,0,255])
+s_dwn = cv.drawKeypoints(scale_down_image,k_dwn,s_dwn,color=[0,255,0])
 
 #affine
 k_aff = sift.detect(gray_aff,None)
 s_aff = affine_image.copy()
-s_aff = cv.drawKeypoints(affine_image,k_aff,s_aff,color=[0,0,255])
+s_aff = cv.drawKeypoints(affine_image,k_aff,s_aff,color=[0,255,0])
 
 #perspective
 k_per = sift.detect(gray_per,None)
 s_per = perspective_image.copy()
-s_per = cv.drawKeypoints(perspective_image,k_per,s_per, color=[0,0,255])
+s_per = cv.drawKeypoints(perspective_image,k_per,s_per, color=[0,255,0])
 
 #Subplot plotting
 fig, ax = plt.subplots(2,3, figsize=(15,9), sharex=True, sharey=True)
