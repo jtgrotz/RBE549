@@ -2,15 +2,16 @@ import cv2 as cv
 import numpy as np
 import time
 class custom_sift:
-    __intervals = 4
-    __octaves = 3
+    __intervals = 4 #intervals or number of scales
+    __octaves = 5 #of octaves
     initial_sigma = np.sqrt(2)/2.0
-    kernel_size = 0
-    r = 10
-    interpolation_threshold = 0.01*256
+    kernel_size = 0 #kernel for blur, set to zero to be dynamic
+    r = 10 #radius for eliminating edge response
+    interpolation_threshold = 0.02*256 #threshold for weak extreme
     initial_image_y = 0
     initial_image_x = 0
 
+    #object initialization
     def __init__(self, initial_sigma):
         self.initial_sigma = initial_sigma
 
@@ -18,17 +19,17 @@ class custom_sift:
     #Function for setting the number of intervals
     #adjusts k value accordingly
     def set_intervals(self, intervals):
-        return None
+        self.__intervals = intervals
 
     #function for setting the number of octaves
     def set_octaves(self,octaves):
-        return None
+        self.__octaves = octaves
 
     #main SIFT function
     #input: BGR_image, threshold for feature
     #output: gray_image with features, feature locations
     def SIFT(self,image):
-        #convert image to right format: GRAY_SCALE
+        #convert image to right format: GRAY_SCALE and float32 for more accurate calculations
         gray_image = cv.cvtColor(image,cv.COLOR_BGR2GRAY)
         gray_image = gray_image.astype('float32')
         shape = np.shape(gray_image)
@@ -41,20 +42,20 @@ class custom_sift:
         dog = self.__create_difference_of_gaussian(gray_image)
         #accurate keypoint localization
         print("Finding Keypoints")
-        keypoints = self.keypoint_localization(dog)
+        keypoints = self.keypoint_localization(dog) #finds extremum within neighbors
         print("Interpolating Keypoints")
-        accurate_keypoints = self.interpolate_keypoints(dog,keypoints)
+        accurate_keypoints = self.interpolate_keypoints(dog,keypoints) #uses quadratic interpolation
         print("Edge Filtering Keypoints")
-        edge_filtered_keypoints = self.eliminate_edge_response(dog,accurate_keypoints)
+        edge_filtered_keypoints = self.eliminate_edge_response(dog,accurate_keypoints) #filters edge points
         keypoint_image = self.visualize_keypoints(image,edge_filtered_keypoints)
         return keypoint_image, edge_filtered_keypoints
-        #keypoints = self.eliminate_edge_response(keypoint_image)
 
         #orientation assignment
         #TODO
         #keypoint_descriptor
         #TODO
 
+        #function that creates scale space and subtracts adjacent images to form DoG
     def __create_difference_of_gaussian(self,image):
         #define k as 2^(1/s)
         k = np.power(2,(1/self.__intervals))
@@ -84,7 +85,7 @@ class custom_sift:
         for octave in range(self.__octaves):
             DoG_octave = []
             for s in range(self.__intervals+2):
-                #subtract neighboring images in the scale space to make the DoG
+                #subtract neighboring images in the scale space to make the DoG must use cv.subtract
                 difference = cv.subtract(scale_space[octave][s+1],scale_space[octave][s])
                 #cv.imshow('im', difference)
                 #cv.waitKey(0)
@@ -92,6 +93,8 @@ class custom_sift:
             DoG.append(DoG_octave)
         return DoG
 
+    #function for keypoint finding and localization
+    #input difference _of_gaussian
     def keypoint_localization(self,diff_of_gauss):
         #set storage for keypoints
         keypoints = []
@@ -165,13 +168,14 @@ class custom_sift:
         for k in range(len(keypoints)):
             iterations = 0
             value = 1
-            point = []
             # iterate until keypoint is within range or n tries have been done
             k = keypoints[k]
             oct = k[0]
+            #save points a 3x1 array
             point = np.array(k[1:4], dtype=float)
-            #print(point)
+            #continues to iterate if interpolation moves the pixel by a large amount for better localization
             while (value > 0.6):
+                #if exceeding 5 iterations, then break.
                 if iterations > 5:
                     print("reached max iterations")
                     break
@@ -207,6 +211,7 @@ class custom_sift:
 
 
         #function form the hessian matrix
+        # s is scale, y is y coordinate x is x coordinate
     def calc_hessian(self,DoG_octave,s,y,x):
         w = DoG_octave
         h11 = w[s+1][y][x]+w[s-1][y][x]-2*w[s][y][x]
@@ -219,6 +224,7 @@ class custom_sift:
         return h.astype(float)
 
     #function approximates the 3d gradient
+    # s is scale, y is y coordinate x is x coordinate
     def calc_3dgradient(self,DoG_octave,s,y,x):
         w = DoG_octave
         gs = (w[s+1][y][x]-w[s-1][y][x])/2
@@ -227,6 +233,7 @@ class custom_sift:
         g = np.array([[gs],[gy],[gx]])
         return g.astype(float)
 
+    #function to compute the maximum point and extremum value using quadratic interpolation
     def quadratic_interpolation(self,DoG,oct,keypoint):
         output = []
         #convert to int for array indexing
@@ -236,20 +243,20 @@ class custom_sift:
         w = np.array([[s], [y], [x]])
         gradient = self.calc_3dgradient(DoG[oct],s,y,x)
         hessian = self.calc_hessian(DoG[oct],s,y,x)
-        #x_prime = H^-1 * g
-        try:
+        #x_prime = H^-1 * g: distance to move point to reach true max/min
+        try: #try as sometimes there is a singular matrix that cant be inverted
             x_prime = np.matmul(np.linalg.inv(hessian),gradient)
         except:
             print('Singular Matrix, skipping keypoint')
             x_prime = np.array([[0],[0],[0]])
-        # D_x_prime = w + 0.5*G^T*x_prime where w is the value of the image at that point
-        #omega = w - 0.5*np.matmul(np.matmul(np.transpose(gradient),np.linalg.inv(hessian)),gradient)
+        # D_x_prime = w + 0.5*G^T*x_prime where w is the value of the image at that point: Pixel value at new extreme
         D_x_prime = float(DoG[oct][s][y][x])-0.5*np.dot(np.matrix.transpose(gradient),x_prime)
 
         output.append(x_prime)
         output.append(D_x_prime)
         return output
 
+    #function that computes eigen value ratio for edge rejection
     def eliminate_edge_response(self,DoG,keypoints):
         #intialize list
         new_keypoints = []
@@ -264,6 +271,7 @@ class custom_sift:
                 new_keypoints.append(k)
         return new_keypoints
 
+    #function for calculating 2d hessian for edge rejection
     def calc_2d_hessian(self,DoG,keypoint):
         octave = int(keypoint[0])
         s = int(keypoint[1])
@@ -277,9 +285,11 @@ class custom_sift:
         return h.astype(float)
 
 
+    #funciton for drawing keypoints. Eahc keypoint is a constant size blue circle
     def visualize_keypoints(self,image,keypoints):
         for k in keypoints:
             oct = k[0]
+            #adjust location of circle based on keypoints in different octaves
             x_coord = k[3] * np.power(2, oct)
             y_coord = k[2] * np.power(2, oct)
             center = (int(x_coord),int(y_coord))
@@ -287,11 +297,13 @@ class custom_sift:
 
         return image
 
+        #unsused function
     def convert_to_original_coordinates(self,keypoint):
         return None
 
-    #function to check if interpolated point is outside of the image.
+    #function to check if interpolated point is outside of the image, so as to ignore the point.
     def check_outside(self,point, octave):
+        #scales limits based on octave
         ylim = self.initial_image_y/(np.power(2,octave))
         xlim = self.initial_image_x/(np.power(2,octave))
         s_check = point[0] >= self.__intervals+1 or point[0] < 0
