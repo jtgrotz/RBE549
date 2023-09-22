@@ -2,10 +2,14 @@ import cv2 as cv
 import numpy as np
 import time
 class custom_sift:
-    __intervals = 2
+    __intervals = 4
     __octaves = 3
     initial_sigma = np.sqrt(2)/2.0
     kernel_size = 0
+    r = 10
+    interpolation_threshold = 0.01*256
+    initial_image_y = 0
+    initial_image_x = 0
 
     def __init__(self, initial_sigma):
         self.initial_sigma = initial_sigma
@@ -26,13 +30,24 @@ class custom_sift:
     def SIFT(self,image):
         #convert image to right format: GRAY_SCALE
         gray_image = cv.cvtColor(image,cv.COLOR_BGR2GRAY)
+        gray_image = gray_image.astype('float32')
+        shape = np.shape(gray_image)
+        self.initial_image_y = shape[0]
+        self.initial_image_x = shape[1]
         #cv.imshow('im',gray_image)
         #cv.waitKey(0)
         #scale_space extrema detection
+        print("Creating Difference of Gaussian")
         dog = self.__create_difference_of_gaussian(gray_image)
         #accurate keypoint localization
+        print("Finding Keypoints")
         keypoints = self.keypoint_localization(dog)
+        print("Interpolating Keypoints")
         accurate_keypoints = self.interpolate_keypoints(dog,keypoints)
+        print("Edge Filtering Keypoints")
+        edge_filtered_keypoints = self.eliminate_edge_response(dog,accurate_keypoints)
+        keypoint_image = self.visualize_keypoints(image,edge_filtered_keypoints)
+        return keypoint_image, edge_filtered_keypoints
         #keypoints = self.eliminate_edge_response(keypoint_image)
 
         #orientation assignment
@@ -115,8 +130,6 @@ class custom_sift:
         print(l)
         return keypoints
 
-    def eliminate_edge_response(self, keypoint_image):
-        return None
 
     #function for comparing if point is greater than or less then all neighbors.
     def __is_extremum(self, p_initial, other_pts):
@@ -139,6 +152,7 @@ class custom_sift:
         points.append(image[y+1][x+1])
         return points
 
+    #kept as a function in case there is any plan to alter keypoint before adding.
     def __add_keypoint(self, k_list, y, x, interval, octave):
         k_list.append([octave, interval, y, x])
         return k_list
@@ -153,24 +167,44 @@ class custom_sift:
             value = 1
             point = []
             # iterate until keypoint is within range or n tries have been done
-            while (value > 0.6) or (iterations > 5):
+            k = keypoints[k]
+            oct = k[0]
+            point = np.array(k[1:4], dtype=float)
+            #print(point)
+            while (value > 0.6):
+                if iterations > 5:
+                    print("reached max iterations")
+                    break
+
                 #initialize point
-                point = keypoints[k]
-                #do quadratic interpolation update values = [alpha, omega]
-                update_values = self.quadratic_interpolation(diff_of_gaussian,point)
+                #checks if point is outside of bounds, otherwise continues operation
+                if self.check_outside(point,oct):
+                    break
+                else:
+                    point = np.array(point, dtype=float)
+                    #do quadratic interpolation update values = [x_prime, D_x_prime]
+                    update_values = self.quadratic_interpolation(diff_of_gaussian, oct, point)
+                    #determine how much interpolation moves the point
+                    value = max(update_values[0])
+                    if value > 0.5: #0.5 is value that would change the round operation to search at new point
+                        #update (s,y,x) point with values from interpolation
+                        point[0] = round(point[0]+update_values[0][0][0]) #s
+                        point[1] = round(point[1]+update_values[0][1][0]) #y
+                        point[2] = round(point[2]+update_values[0][2][0]) #x
+                    else:
+                        break
+                    iterations += 1
 
-                #update position
-                point[0] = round(point[0]+update_values[0][0][0]) #s
-                point[1] = round(point[1]+update_values[0][1][0]) #y
-                point[2] = round(point[2]+update_values[0][2][0]) #x
-                # convert to pixel space
-                value = max(update_values[0])
-
+            # if point is still within range then add to list.
             if value < 0.6:
                 original_coordinate = self.convert_to_original_coordinates(point)
-                new_keypoints.append(point)
+                #if the value of the interpolation at the given point is less than a value, discard the keypoint as unstable
+                if np.absolute(update_values[1]) > self.interpolation_threshold:
+                    new_keypoints.append([oct, point[0], point[1], point[2]])
 
-        #if point is still within range then add to list.
+        return new_keypoints
+
+
 
         #function form the hessian matrix
     def calc_hessian(self,DoG_octave,s,y,x):
@@ -181,7 +215,8 @@ class custom_sift:
         h12 = (w[s+1][y+1][x]-w[s+1][y-1][x]-w[s-1][y+1][x]+w[s-1][y-1][x])/4
         h23 = (w[s][y+1][x+1]-w[s][y+1][x-1]-w[s][y-1][x+1]+w[s][y-1][x-1])/4
         h13 = (w[s+1][y][x+1]-w[s+1][y][x-1]-w[s-1][y][x+1]+w[s-1][y][x-1])/4
-        return np.array([[h11, h12, h13],[h12, h22, h23],[h13, h23, h33]])
+        h = np.array([[h11, h12, h13], [h12, h22, h23], [h13, h23, h33]])
+        return h.astype(float)
 
     #function approximates the 3d gradient
     def calc_3dgradient(self,DoG_octave,s,y,x):
@@ -189,31 +224,77 @@ class custom_sift:
         gs = (w[s+1][y][x]-w[s-1][y][x])/2
         gy = (w[s][y+1][x]-w[s][y-1][x])/2
         gx = (w[s][y][x+1]-w[s][y][x-1])/2
-        return np.array([[gs],[gy],[gx]])
+        g = np.array([[gs],[gy],[gx]])
+        return g.astype(float)
 
-    def quadratic_interpolation(self,DoG,keypoint):
+    def quadratic_interpolation(self,DoG,oct,keypoint):
         output = []
-        oct = keypoint[0]
-        s = keypoint[1]
-        y = keypoint[2]
-        x = keypoint[3]
-        w = np.array([[s],[y],[x]])
+        #convert to int for array indexing
+        s = int(keypoint[0])
+        y = int(keypoint[1])
+        x = int(keypoint[2])
+        w = np.array([[s], [y], [x]])
         gradient = self.calc_3dgradient(DoG[oct],s,y,x)
         hessian = self.calc_hessian(DoG[oct],s,y,x)
-        #alpha = H^-1 * g
-        alpha = np.matmul(np.linalg.inv(hessian),gradient)
-        # omega = w - 0.5*G^T*H^-1*g
-        omega = w - 0.5*np.matmul(np.matmul(np.transpose(gradient),np.linalg.inv(hessian)),gradient)
+        #x_prime = H^-1 * g
+        try:
+            x_prime = np.matmul(np.linalg.inv(hessian),gradient)
+        except:
+            print('Singular Matrix, skipping keypoint')
+            x_prime = np.array([[0],[0],[0]])
+        # D_x_prime = w + 0.5*G^T*x_prime where w is the value of the image at that point
+        #omega = w - 0.5*np.matmul(np.matmul(np.transpose(gradient),np.linalg.inv(hessian)),gradient)
+        D_x_prime = float(DoG[oct][s][y][x])-0.5*np.dot(np.matrix.transpose(gradient),x_prime)
 
-        output.append(alpha)
-        output.append(omega)
+        output.append(x_prime)
+        output.append(D_x_prime)
         return output
 
     def eliminate_edge_response(self,DoG,keypoints):
-        return None
+        #intialize list
+        new_keypoints = []
+        #go through each keypoint and look for edge response
+        for k in keypoints:
+            #compute 2D hessian
+            H = self.calc_2d_hessian(DoG,k)
+            #compute trace(H)^2/det(H)
+            ratio = (np.trace(H)**2)/np.linalg.det(H)
+            #compare to value of (r+1)^2/r
+            if ratio < (((self.r+1)**2)/self.r):
+                new_keypoints.append(k)
+        return new_keypoints
+
+    def calc_2d_hessian(self,DoG,keypoint):
+        octave = int(keypoint[0])
+        s = int(keypoint[1])
+        y = int(keypoint[2])
+        x = int(keypoint[3])
+        w = DoG[octave]
+        h11 = w[s][y+1][x]+w[s][y-1][x]-2*w[s][y][x]
+        h12 = (w[s][y+1][x+1]-w[s][y+1][x-1]-w[s][y-1][x+1]+w[s][y-1][x-1])/4
+        h22 = w[s][y][x+1]+w[s][y][x-1]-2*w[s][y][x]
+        h = np.array([[h11, h12],[h12, h22]])
+        return h.astype(float)
+
 
     def visualize_keypoints(self,image,keypoints):
-        return None
+        for k in keypoints:
+            oct = k[0]
+            x_coord = k[3] * np.power(2, oct)
+            y_coord = k[2] * np.power(2, oct)
+            center = (int(x_coord),int(y_coord))
+            image = cv.circle(image,center,3,[255,0,0],1)
+
+        return image
 
     def convert_to_original_coordinates(self,keypoint):
         return None
+
+    #function to check if interpolated point is outside of the image.
+    def check_outside(self,point, octave):
+        ylim = self.initial_image_y/(np.power(2,octave))
+        xlim = self.initial_image_x/(np.power(2,octave))
+        s_check = point[0] >= self.__intervals+1 or point[0] < 0
+        y_check = point[1] < 0 or point[1] >= ylim-1
+        x_check = point[2] < 0 or point[2] >= xlim-1
+        return any([s_check, y_check, x_check])
