@@ -7,7 +7,7 @@ class custom_sift:
     initial_sigma = np.sqrt(2)/2.0
     kernel_size = 0 #kernel for blur, set to zero to be dynamic
     r = 10 #radius for eliminating edge response
-    interpolation_threshold = 0.02*256 #threshold for weak extreme
+    interpolation_threshold = 0.01*255 #threshold for weak extreme
     initial_image_y = 0
     initial_image_x = 0
 

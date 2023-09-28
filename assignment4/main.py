@@ -8,7 +8,7 @@ bgr_image = cv.imread('lenna.png')
 #cv.imshow('im',bgr_image)
 #cv.waitKey(0)
 #set initial sigma value for blurring
-sigma = np.sqrt(2)/2.0
+sigma = np.sqrt(2)*2
 
 #instantiate SIFT object
 my_sift = custom_sift(sigma)
