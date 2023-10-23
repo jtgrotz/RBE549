@@ -2,12 +2,16 @@ import numpy as np
 import cv2 as cv
 import glob
 
+#settings for checkerboard size
+pattern_x = 7
+pattern_y = 11
+
 #set termination criteria
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
 #prepare 10x7 grid points
-objp = np.zeros((11*7,3), np.float32)
-objp[:,:2] = np.mgrid[0:7,0:11].T.reshape(-1,2)
+objp = np.zeros((pattern_y*pattern_x,3), np.float32)
+objp[:,:2] = np.mgrid[0:pattern_x,0:pattern_y].T.reshape(-1,2)
 
 #arrays to store points from all images
 objpoints = []
@@ -21,7 +25,7 @@ for iname in images:
     gray_img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
     #find corners
-    ret, corners = cv.findChessboardCorners(gray_img,(7,11), None)
+    ret, corners = cv.findChessboardCorners(gray_img,(pattern_x,pattern_y), None)
 
     #add points to object points
     if ret == True:
@@ -31,7 +35,7 @@ for iname in images:
         imgpoints.append(corners2)
 
         #draw and display corners
-        cv.drawChessboardCorners(img,(7,11), corners2,ret)
+        cv.drawChessboardCorners(img,(pattern_x,pattern_y), corners2,ret)
         cv.imshow('img',img)
         cv.waitKey(200)
 
@@ -62,7 +66,8 @@ un_dist = cv.undistort(image,mtx,dist,None,newcameramtx)
 x, y, w, h, = roi
 un_dist = un_dist[y:y+h, x:x+w]
 #cv.imwrite('calibration_result.jpg',un_dist)
-cv.imshow('undist',un_dist)
+cv.imshow('distorted',image)
+cv.imshow('undistorted',un_dist)
 cv.waitKey(0)
 
 

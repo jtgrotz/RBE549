@@ -9,29 +9,34 @@ cv.waitKey(0)
 
 #apply canny edge detection to extract edges
 #initially blur image
-blur_texas = cv.GaussianBlur(texas,(5,5),1)
+blur_texas = cv.GaussianBlur(texas, (5, 5), 1)
 #apply canny
 canny_texas = cv.Canny(blur_texas,150,300)
-cv.imshow('img',canny_texas)
+cv.imshow('img', canny_texas)
 cv.waitKey(0)
 
+lines_texas = texas.copy()
+
 #run hough line transform to detect lines on edge detected image
-lines = cv.HoughLines(canny_texas,1,np.pi/180,150, None, 0, 0)
+lines = cv.HoughLines(canny_texas, 1, np.pi/180, 150, None, 0, 0)
 
 #visualizes the lines for debug can comment out as needed
 if lines is not None:
     for i in range(0, len(lines)):
+        #extract polar coordinates
         rho = lines[i][0][0]
         theta = lines[i][0][1]
         a = np.cos(theta)
         b = np.sin(theta)
+        #find x and y intercepts
         x0 = a * rho
         y0 = b * rho
+        #create two points arbitrarily separated for visualization
         pt1 = (int(x0 + 1000 * (-b)), int(y0 + 1000 * (a)))
         pt2 = (int(x0 - 1000 * (-b)), int(y0 - 1000 * (a)))
-        cv.line(texas, pt1, pt2, (0, 0, 200), 1, cv.LINE_AA)
+        cv.line(lines_texas, pt1, pt2, (0, 0, 200), 1, cv.LINE_AA)
 
-cv.imshow('img',texas)
+cv.imshow('img',lines_texas)
 cv.waitKey(0)
 
 #filter detected lines based on angle
@@ -63,6 +68,7 @@ print(x) #this is the solution of the least squares
 vanish_x = int(x[0][0])
 vanish_y = int(x[1][0])
 #draw circle
-cv.circle(texas,(vanish_x,vanish_y),12,(255,0,0),-1)
+cv.circle(texas,(vanish_x,vanish_y),12,(0,0,255),-1)
+cv.imwrite('texas_vanishing_point.png',texas)
 cv.imshow('img',texas)
 cv.waitKey(0)
