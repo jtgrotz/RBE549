@@ -58,8 +58,14 @@ for i in range(num_lines):
     a[i][0] = np.cos(theta)
     a[i][1] = np.sin(theta)
 
-#solve using least squares
-x, r, rank, sing = np.linalg.lstsq(a,b)
+#solve using least squares solution shown below
+# x = (A'A)^-1 A' b
+at = np.matrix.transpose(a)
+ata = np.matmul(at,a)
+inva = np.linalg.inv(ata)
+w = np.matmul(inva,at)
+x = np.matmul(w,b)
+#x, r, rank, sing = np.linalg.lstsq(a,b)
 print(x) #this is the solution of the least squares
 
 
