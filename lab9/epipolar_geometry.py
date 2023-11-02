@@ -55,9 +55,11 @@ def find_epipolar(kp1, des1, img1, kp2, des2, img2, matcher):
 
 
 #import images
+
 left = cv.imread('globe_left.jpg',cv.IMREAD_GRAYSCALE)
 center = cv.imread('globe_center.jpg', cv.IMREAD_GRAYSCALE)
 right = cv.imread('globe_right.jpg', cv.IMREAD_GRAYSCALE)
+
 
 #create sift instance
 sift = cv.SIFT_create()
@@ -76,9 +78,11 @@ flann = cv.FlannBasedMatcher(index_params, search_params)
 
 #call function to find epilines for left and center image
 lc1, lc3 = find_epipolar(kpl,desl,left,kpc,desc,center,flann)
+
 #call function to find epilines for center and right image
 cr1, cr3 = find_epipolar(kpc,desc,center,kpr,desr,right,flann)
 
+#show images
 plt.subplot(121),plt.imshow(lc1)
 plt.subplot(122),plt.imshow(lc3)
 plt.show()
@@ -87,16 +91,6 @@ plt.subplot(121),plt.imshow(cr1)
 plt.subplot(122),plt.imshow(cr3)
 plt.show()
 
-#cv.imshow('lc1',lc1)
-#cv.imshow('lc2',lc2)
-#cv.imshow('lc3',lc3)
-#cv.imshow('lc4',lc4)
-
-#cv.imshow('cr1',cr1)
-#cv.imshow('cr2',cr2)
-#cv.imshow('cr3',cr3)
-#cv.imshow('cr4',cr4)
-#cv.waitKey(0)
 
 
 
