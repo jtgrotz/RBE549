@@ -3,6 +3,12 @@ import numpy as np
 import calibrate_camera
 from scipy.linalg import svd
 
+def test_points_in_front(pts1,pts2,R,T):
+    return 0
+
+def LinearLSTriangulation():
+    return 0
+
 ##calibrate my webcam using chessboard method.
 #lab 8 camera calibration code
 calibrate_camera
@@ -63,7 +69,13 @@ cv.waitKey(0)
 
 ##calculate the fundamental matrix using the 8 point algorithm
 F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_8POINT)
+#F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_RANSAC,0.1,0.99)
+print('Fundamental Matrix')
 print(F)
+print('Rank of F')
+print(np.linalg.matrix_rank(F))
+
+print('Epipolar Constraint')
 ptsl = ptsl[mask.ravel()==1]
 ptsr = ptsr[mask.ravel()==1]
 #verify  qr^T * F * ql = 0
@@ -87,6 +99,8 @@ print('Max')
 print(np.max(results))
 print('Average')
 print(np.average(results))
+print('STD')
+print(np.std(results))
 
 ##using the M and K of the camera, calculate the essential matrix E
 #E = K' F K
@@ -106,11 +120,15 @@ print(S)
 print(VT)
 
 #Tx = [u1 x u2]x
+#T is also the third column of the U matrix
 cp = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 0]])
 fm = np.matmul(U,cp)
 Tx = np.matmul(fm, np.transpose(U))
+T = U[:,2]
+T = np.reshape(T,(3,1))
 print('Translation Vector')
 print(Tx)
+print(T)
 
 #R = U[RM]V^T
 #two different matricies to represent the two different solutions for this problem
@@ -124,7 +142,17 @@ print("Rotation Matrix")
 print(R)
 print(R2)
 
+#Test which combination of R and T put coordinates in front of camera.
+#+T and R1
+#+T and R2
+#-T and R1
+#-T and R2
+
 ##create the projection matricies P0 and P1 for both images
+P0 = np.array([1,0,0,0,0,1,0,0,0,0,1,0]).reshape(3,4)
+print(P0)
+P1 = np.append(R,T,1)
+print(P1)
 
 ##estimate the reprojection error for both cameras
 
