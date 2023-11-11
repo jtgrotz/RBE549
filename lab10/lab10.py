@@ -1,6 +1,7 @@
 import cv2 as cv
 import numpy as np
 import calibrate_camera
+from scipy.linalg import svd
 
 ##calibrate my webcam using chessboard method.
 #lab 8 camera calibration code
@@ -98,6 +99,30 @@ print("Determinant of E")
 print(np.round(detE,3))
 
 ##extract the R and T from E using decomposition
+#E = UDV^T
+U,S,VT = svd(E)
+print(U)
+print(S)
+print(VT)
+
+#Tx = [u1 x u2]x
+cp = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 0]])
+fm = np.matmul(U,cp)
+Tx = np.matmul(fm, np.transpose(U))
+print('Translation Vector')
+print(Tx)
+
+#R = U[RM]V^T
+#two different matricies to represent the two different solutions for this problem
+rm = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
+rm2 = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 1]])
+fm = np.matmul(U,rm)
+fm2 = np.matmul(U,rm)
+R = np.matmul(fm,VT)
+R2 = np.matmul(fm2,VT)
+print("Rotation Matrix")
+print(R)
+print(R2)
 
 ##create the projection matricies P0 and P1 for both images
 
