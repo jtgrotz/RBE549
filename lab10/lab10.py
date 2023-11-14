@@ -2,12 +2,60 @@ import cv2 as cv
 import numpy as np
 import calibrate_camera
 from scipy.linalg import svd
+import open3d as o3d
+import open3d.core as o3c
+
+def SavePCDToFile(pc):
+    xyzi = np.random.rand(100, 4)
+
+    xyz = xyzi[:, 0:3]
+    i = [[i] for i in xyzi[:, 3]]
+    p = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(xyz))
+    p.colors = o3d.utility.Vector3dVector(xyz)
+    o3d.io.write_point_cloud('test.pcd',p,write_ascii=True)
+    return 0
 
 def test_points_in_front(pts1,pts2,R,T):
     return 0
 
-def LinearLSTriangulation():
-    return 0
+def LinearLSTriangulation(u0,P0,u1,P1):
+    #define each row for readability
+    R1 = np.array([ u0[0]*P0[2][0]-P0[1][0], u0[0]*P0[2][1]-P0[1][1], u0[0]*P0[2][2]-P0[1][2], u0[0]*P0[2][3]-P0[1][3]])
+    R2 = np.array([ u0[1]*P0[2][0]-P0[1][0], u0[1]*P0[2][1]-P0[1][1], u0[1]*P0[2][2]-P0[1][2], u0[1]*P0[2][3]-P0[1][3]])
+    R3 = np.array([ u1[0]*P1[2][0]-P1[1][0], u1[0]*P1[2][1]-P1[1][1], u1[0]*P1[2][2]-P1[1][2], u1[0]*P1[2][3]-P1[1][3]])
+    R4 = np.array([ u1[1]*P1[2][0]-P1[1][0], u1[1]*P1[2][1]-P1[1][1], u1[1]*P1[2][2]-P1[1][2], u1[1]*P1[2][3]-P1[1][3]])
+
+    #create form Ax = 0
+    A = np.array([R1,R2,R3,R4])
+
+    #least squares solution
+    X_Prime = np.matmul(np.linalg.inv(np.matmul(A.T, A)), (np.matmul(A.T, np.array([[0], [0], [0], [0]]))))
+    print(X_Prime)
+    return X_Prime
+
+def LinearLSTriangulationSVD(u0,P0,u1,P1):
+    # define each row for readability
+    R1 = np.array([u0[0] * P0[2][0] - P0[0][0], u0[0] * P0[2][1] - P0[0][1], u0[0] * P0[2][2] - P0[0][2],
+                   u0[0] * P0[2][3] - P0[0][3]])
+    R2 = np.array([u0[1] * P0[2][0] - P0[1][0], u0[1] * P0[2][1] - P0[1][1], u0[1] * P0[2][2] - P0[1][2],
+                   u0[1] * P0[2][3] - P0[1][3]])
+    R3 = np.array([u1[0] * P1[2][0] - P1[0][0], u1[0] * P1[2][1] - P1[0][1], u1[0] * P1[2][2] - P1[0][2],
+                   u1[0] * P1[2][3] - P1[0][3]])
+    R4 = np.array([u1[1] * P1[2][0] - P1[1][0], u1[1] * P1[2][1] - P1[1][1], u1[1] * P1[2][2] - P1[1][2],
+                   u1[1] * P1[2][3] - P1[1][3]])
+
+    # create form Ax = 0
+    A = np.array([R1, R2, R3, R4])
+
+    #SVD solution
+    U,S,VT = np.linalg.svd(A)
+    #print(U)
+    #print(S)
+    print('VT')
+    print(VT)
+
+    #solution is the eigen vector corresponding to the smallest eigen value, which is the last column of Vt
+    return (VT.T[:,3])
 
 ##calibrate my webcam using chessboard method.
 #lab 8 camera calibration code
@@ -143,27 +191,42 @@ print(R)
 print(R2)
 
 #Test which combination of R and T put coordinates in front of camera.
-#+T and R1
-#+T and R2
-#-T and R1
-#-T and R2
+#+T and R1 (1)
+#+T and R2 (2)
+#-T and R1 (3)
+#-T and R2 (4)
 
 ##create the projection matricies P0 and P1 for both images
-P0 = np.array([1,0,0,0,0,1,0,0,0,0,1,0]).reshape(3,4)
+P0 = np.array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]).reshape(3,4)
 print(P0)
-P1 = np.append(R,T,1)
-print(P1)
+P1_1 = np.append(R,T,1)
+P1_2 = np.append(R2,T,1)
+P1_3 = np.append(R,-T,1)
+P1_4 = np.append(R2,-T,1)
 
 ##estimate the reprojection error for both cameras
 
 ##triangulate the 3d Points using the linear least square triangulation technique
-# def LinearLSTriangulation()
+test_point0 = ptsl[20]
+test_point1 = ptsr[20]
+my_point = LinearLSTriangulationSVD(test_point0,P0,test_point1,P1_1)
+print(my_point)
+my_point = LinearLSTriangulationSVD(test_point0,P0,test_point1,P1_2)
+print(my_point)
+my_point = LinearLSTriangulationSVD(test_point0,P0,test_point1,P1_3)
+print(my_point)
+my_point = LinearLSTriangulationSVD(test_point0,P0,test_point1,P1_4)
+print(my_point)
+
+#pointcloud structure is x,y,z,rgbvalue
+#point_cloud = get_pointcloud(ptsl,imgl,ptsr,imgr,P0,P1)
 
 ##save to PCD file with features' dominant color
-#def SavePCDToFile()
+SavePCDToFile(my_point)
 #http://www.open3d.org/docs/release/tutorial/reconstruction_system/make_fragments.html
 #http://www.open3d.org/docs/release/tutorial/geometry/file_io.html
 #http://www.open3d.org/docs/release/tutorial/geometry/pointcloud.html
+
 
 ##visualize 3d point cloud with open3D
 #http://www.open3d.org/docs/release/tutorial/visualization/visualization.html
