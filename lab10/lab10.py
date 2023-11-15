@@ -3,28 +3,32 @@ import numpy as np
 import calibrate_camera
 from scipy.linalg import svd
 import open3d as o3d
-import open3d.core as o3c
+import random
 
-def SavePCDToFile(pc):
-    xyzi = np.random.rand(100, 4)
-
-    xyz = xyzi[:, 0:3]
-    i = [[i] for i in xyzi[:, 3]]
-    p = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(xyz))
-    p.colors = o3d.utility.Vector3dVector(xyz)
+#function for saving saved points and colors as a point cloud.
+#pc is a nx3 array of the x,y,z points
+#color_list is a nx3 array of the same size with the rgb values
+def SavePCDToFile(pc, color_list):
+    #create point cloud with points
+    p = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pc))
+    #add colors to the datastruct
+    p.colors = o3d.utility.Vector3dVector(color_list)
+    #write to file
     o3d.io.write_point_cloud('test.pcd',p,write_ascii=True)
-    return 0
+    #returns point cloud for visualization
+    return p
 
-def test_points_in_front(pts1,pts2,R,T):
-    return 0
 
 def LinearLSTriangulation(u0,P0,u1,P1):
     #define each row for readability
-    R1 = np.array([ u0[0]*P0[2][0]-P0[1][0], u0[0]*P0[2][1]-P0[1][1], u0[0]*P0[2][2]-P0[1][2], u0[0]*P0[2][3]-P0[1][3]])
-    R2 = np.array([ u0[1]*P0[2][0]-P0[1][0], u0[1]*P0[2][1]-P0[1][1], u0[1]*P0[2][2]-P0[1][2], u0[1]*P0[2][3]-P0[1][3]])
-    R3 = np.array([ u1[0]*P1[2][0]-P1[1][0], u1[0]*P1[2][1]-P1[1][1], u1[0]*P1[2][2]-P1[1][2], u1[0]*P1[2][3]-P1[1][3]])
-    R4 = np.array([ u1[1]*P1[2][0]-P1[1][0], u1[1]*P1[2][1]-P1[1][1], u1[1]*P1[2][2]-P1[1][2], u1[1]*P1[2][3]-P1[1][3]])
-
+    R1 = np.array([u0[0] * P0[2][0] - P0[0][0], u0[0] * P0[2][1] - P0[0][1], u0[0] * P0[2][2] - P0[0][2],
+                   u0[0] * P0[2][3] - P0[0][3]])
+    R2 = np.array([u0[1] * P0[2][0] - P0[1][0], u0[1] * P0[2][1] - P0[1][1], u0[1] * P0[2][2] - P0[1][2],
+                   u0[1] * P0[2][3] - P0[1][3]])
+    R3 = np.array([u1[0] * P1[2][0] - P1[0][0], u1[0] * P1[2][1] - P1[0][1], u1[0] * P1[2][2] - P1[0][2],
+                   u1[0] * P1[2][3] - P1[0][3]])
+    R4 = np.array([u1[1] * P1[2][0] - P1[1][0], u1[1] * P1[2][1] - P1[1][1], u1[1] * P1[2][2] - P1[1][2],
+                   u1[1] * P1[2][3] - P1[1][3]])
     #create form Ax = 0
     A = np.array([R1,R2,R3,R4])
 
@@ -51,11 +55,48 @@ def LinearLSTriangulationSVD(u0,P0,u1,P1):
     U,S,VT = np.linalg.svd(A)
     #print(U)
     #print(S)
-    print('VT')
-    print(VT)
+    #print('VT')
+    #print(VT)
 
     #solution is the eigen vector corresponding to the smallest eigen value, which is the last column of Vt
-    return (VT.T[:,3])
+    #size 4
+    value = (VT.T[:,3])
+    return value[0:3]
+
+#function that takes a point and an image, and returns the average of the four adjacent pixel colors
+def get_average_color(pt,image):
+    int_pt = np.int16(pt)
+    base_color = image[int_pt[1]][int_pt[0]]
+    #get four neighbors
+    up = np.int16(image[int_pt[1]-1][int_pt[0]])
+    down = np.int16(image[int_pt[1]+1][int_pt[0]])
+    left = np.int16(image[int_pt[1]][int_pt[0]-1])
+    right = np.int16(image[int_pt[1]][int_pt[0]+1])
+
+    #average each color channel
+    r = np.int16((base_color[2]+up[2]+down[2]+left[2]+right[2])/5)
+    g = np.int16((base_color[1]+up[1]+down[1]+left[1]+right[1])/5)
+    b = np.int16((base_color[0]+up[0]+down[0]+left[0]+right[0])/5)
+
+    return np.array([r,g,b])
+
+#function that takes a list of corresponding points and triangulates the poisition, and finds the average color of the point in the images.
+def transform_points_with_color(ptsl,imgl,ptsr,imgr,P0,P1):
+    xyz_points = []
+    point_colors = []
+    #iterate through each correlated point and convert to xyz and rgb
+    for i in range(len(ptsl)):
+        curr_pt = LinearLSTriangulationSVD(ptsl[i],P0,ptsr[i],P1)
+        l_c = get_average_color(ptsl[i],imgl)
+        r_c = get_average_color(ptsr[i],imgr)
+        #average left and right image colors, normalize colors to be in 0-1 range
+        point_colors.append(np.array([(l_c[0]+r_c[0])/2, (l_c[1]+r_c[1])/2, (l_c[2]+r_c[2])/2])/255)
+        #append triangulated point
+        xyz_points.append(curr_pt)
+
+    return xyz_points, point_colors
+
+
 
 ##calibrate my webcam using chessboard method.
 #lab 8 camera calibration code
@@ -72,8 +113,8 @@ imgl_gray = cv.cvtColor(imgl, cv.COLOR_BGR2GRAY)
 
 ##extract features (sift or surf) find correspondence
 #create sift instance
-#feature_detect = cv.SIFT_create()
-feature_detect = cv.xfeatures2d.SURF_create(400)
+feature_detect = cv.SIFT_create()
+#feature_detect = cv.xfeatures2d.SURF_create(400)
 
 #find sift keypoints and descriptors
 kpl, desl = feature_detect.detectAndCompute(imgl_gray,None)
@@ -104,47 +145,54 @@ for i in range(len(matches)):
         ptsl.append(kpl[m.queryIdx].pt)
         good_matches.append([m])
 
+#converts to floating point more accurate calculations.
+
 ptsl = np.float32(ptsl)
 ptsr = np.float32(ptsr)
 
+#find and show matches between each image
 matched_image = cv.drawMatchesKnn(imgl, kpl, imgr, kpr, good_matches,None,flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 cv.imshow('img',matched_image)
 cv.waitKey(0)
-#find homography
-#then use those keypoints
 
+iterations = 200
+min_average = 1000.0
+min_std = 1000.0
+my_F = []
+for i in range(iterations):
+    # custom ransac for finding the fundamental matrix.
+    rand_list = random.sample(range(len(ptsl)), 36)
+    ##calculate the fundamental matrix using the 8 point algorithm
+    F, mask = cv.findFundamentalMat(ptsl[rand_list], ptsr[rand_list], cv.FM_8POINT)
+    #F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_RANSAC,1,0.99)
 
+    #ptsl = ptsl[mask.ravel()==1]
+    #ptsr = ptsr[mask.ravel()==1]
+    #verify  qr^T * F * ql = 0
+    results = []
+    for i in range(len(ptsl)):
+        #find points
+        ptl = ptsl[i]
+        ptr = ptsr[i]
 
-##calculate the fundamental matrix using the 8 point algorithm
-F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_8POINT)
-#F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_RANSAC,0.1,0.99)
+        #compute math
+        ql = np.array([ptl[0],ptl[1],1.0])
+        qr = np.array([ptr[0],ptr[1],1.0])
+
+        x = np.matmul(ql,F)
+        x2 = np.matmul(x, np.transpose(qr))
+        results.append(x2)
+    #check to see if average and std of epipolar constraint is less than previous iteration
+    if (np.average(results) < min_average) and (np.std(results) < min_std):
+        min_std = np.std(results)
+        min_average = np.average(results)
+        my_F = F
+
 print('Fundamental Matrix')
 print(F)
 print('Rank of F')
 print(np.linalg.matrix_rank(F))
-
-print('Epipolar Constraint')
-ptsl = ptsl[mask.ravel()==1]
-ptsr = ptsr[mask.ravel()==1]
-#verify  qr^T * F * ql = 0
-results = []
-for i in range(len(ptsl)):
-    #find points
-    ptl = ptsl[i]
-    ptr = ptsr[i]
-
-    #compute math
-    ql = np.array([ptl[0],ptl[1],1.0])
-    qr = np.array([ptl[0],ptl[1],1.0])
-
-    x = np.matmul(ql,F)
-    x2 = np.matmul(x, np.transpose(qr))
-    results.append(x2)
-
-print('Min')
-print(np.min(results))
-print('Max')
-print(np.max(results))
+print('Epipolar Testing')
 print('Average')
 print(np.average(results))
 print('STD')
@@ -163,19 +211,16 @@ print(np.round(detE,3))
 ##extract the R and T from E using decomposition
 #E = UDV^T
 U,S,VT = svd(E)
-print(U)
-print(S)
-print(VT)
 
 #Tx = [u1 x u2]x
 #T is also the third column of the U matrix
-cp = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 0]])
-fm = np.matmul(U,cp)
-Tx = np.matmul(fm, np.transpose(U))
-T = U[:,2]
+#cp = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 0]])
+#fm = np.matmul(U,cp)
+#Tx = np.matmul(fm, np.transpose(U))
+T = U[:, 2]
 T = np.reshape(T,(3,1))
 print('Translation Vector')
-print(Tx)
+#print(Tx)
 print(T)
 
 #R = U[RM]V^T
@@ -183,7 +228,7 @@ print(T)
 rm = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
 rm2 = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 1]])
 fm = np.matmul(U,rm)
-fm2 = np.matmul(U,rm)
+fm2 = np.matmul(U,rm2)
 R = np.matmul(fm,VT)
 R2 = np.matmul(fm2,VT)
 print("Rotation Matrix")
@@ -219,10 +264,10 @@ my_point = LinearLSTriangulationSVD(test_point0,P0,test_point1,P1_4)
 print(my_point)
 
 #pointcloud structure is x,y,z,rgbvalue
-#point_cloud = get_pointcloud(ptsl,imgl,ptsr,imgr,P0,P1)
+xyz_points, color_list = transform_points_with_color(ptsl,imgl,ptsr,imgr,P0,P1_1)
 
 ##save to PCD file with features' dominant color
-SavePCDToFile(my_point)
+point_cloud = SavePCDToFile(xyz_points, color_list)
 #http://www.open3d.org/docs/release/tutorial/reconstruction_system/make_fragments.html
 #http://www.open3d.org/docs/release/tutorial/geometry/file_io.html
 #http://www.open3d.org/docs/release/tutorial/geometry/pointcloud.html
@@ -230,6 +275,10 @@ SavePCDToFile(my_point)
 
 ##visualize 3d point cloud with open3D
 #http://www.open3d.org/docs/release/tutorial/visualization/visualization.html
+view_vector1 = np.array([2.1813, 2.0619, 2.0999], np.float64)
+view_vector2 = np.array([-0.4999, -0.1659, -0.8499], np.float64)
+o3d.visualization.draw_geometries([point_cloud])
+
 #frontal
 
 #top
