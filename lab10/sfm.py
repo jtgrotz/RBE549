@@ -14,29 +14,28 @@ def SavePCDToFile(pc, color_list):
     #add colors to the datastruct
     p.colors = o3d.utility.Vector3dVector(color_list)
     #write to file
-    o3d.io.write_point_cloud('test.pcd',p,write_ascii=True)
+    o3d.io.write_point_cloud('point_cloud.pcd',p,write_ascii=True)
     #returns point cloud for visualization
     return p
 
 
+#function to triangulate using the classic least squares solution.
 def LinearLSTriangulation(u0,P0,u1,P1):
-    #define each row for readability
-    R1 = np.array([u0[0] * P0[2][0] - P0[0][0], u0[0] * P0[2][1] - P0[0][1], u0[0] * P0[2][2] - P0[0][2],
-                   u0[0] * P0[2][3] - P0[0][3]])
-    R2 = np.array([u0[1] * P0[2][0] - P0[1][0], u0[1] * P0[2][1] - P0[1][1], u0[1] * P0[2][2] - P0[1][2],
-                   u0[1] * P0[2][3] - P0[1][3]])
-    R3 = np.array([u1[0] * P1[2][0] - P1[0][0], u1[0] * P1[2][1] - P1[0][1], u1[0] * P1[2][2] - P1[0][2],
-                   u1[0] * P1[2][3] - P1[0][3]])
-    R4 = np.array([u1[1] * P1[2][0] - P1[1][0], u1[1] * P1[2][1] - P1[1][1], u1[1] * P1[2][2] - P1[1][2],
-                   u1[1] * P1[2][3] - P1[1][3]])
-    #create form Ax = 0
-    A = np.array([R1,R2,R3,R4])
+    #AX=B form
+    #A 6x4 made from projections
+    A = np.append(P0,P1)
+    A = A.reshape(6,4)
+
+    #B = [ul;ur]
+    B = np.array([u0[0], u0[1], 1, u1[0], u1[1],1]).reshape(6,1)
 
     #least squares solution
-    X_Prime = np.matmul(np.linalg.inv(np.matmul(A.T, A)), (np.matmul(A.T, np.array([[0], [0], [0], [0]]))))
-    print(X_Prime)
-    return X_Prime
+    #(ATA)^-1 AT B
+    X_Prime = np.matmul(np.linalg.inv(np.matmul(A.T, A)), (np.matmul(A.T, B)))
+    #print(X_Prime)
+    return X_Prime[0:3]
 
+#function for solving trangualtion using SVD method. Not used in this implementation.
 def LinearLSTriangulationSVD(u0,P0,u1,P1):
     # define each row for readability
     R1 = np.array([u0[0] * P0[2][0] - P0[0][0], u0[0] * P0[2][1] - P0[0][1], u0[0] * P0[2][2] - P0[0][2],
@@ -53,14 +52,11 @@ def LinearLSTriangulationSVD(u0,P0,u1,P1):
 
     #SVD solution
     U,S,VT = np.linalg.svd(A)
-    #print(U)
-    #print(S)
-    #print('VT')
-    #print(VT)
 
     #solution is the eigen vector corresponding to the smallest eigen value, which is the last column of Vt
     #size 4
-    value = (VT.T[:,3])
+    #value = (VT.T[:,3])
+    value = (VT[:, 3])
     return value[0:3]
 
 #function that takes a point and an image, and returns the average of the four adjacent pixel colors
@@ -86,7 +82,7 @@ def transform_points_with_color(ptsl,imgl,ptsr,imgr,P0,P1):
     point_colors = []
     #iterate through each correlated point and convert to xyz and rgb
     for i in range(len(ptsl)):
-        curr_pt = LinearLSTriangulationSVD(ptsl[i],P0,ptsr[i],P1)
+        curr_pt = LinearLSTriangulation(ptsl[i],P0,ptsr[i],P1)
         l_c = get_average_color(ptsl[i],imgl)
         r_c = get_average_color(ptsr[i],imgr)
         #average left and right image colors, normalize colors to be in 0-1 range
@@ -101,6 +97,7 @@ def transform_points_with_color(ptsl,imgl,ptsr,imgr,P0,P1):
 ##calibrate my webcam using chessboard method.
 #lab 8 camera calibration code
 calibrate_camera
+
 camera_matrix = np.load('calibration_matrix.npy')
 dist_coeff = np.load('distortion_coefficients.npy')
 
@@ -117,8 +114,8 @@ feature_detect = cv.SIFT_create()
 #feature_detect = cv.xfeatures2d.SURF_create(400)
 
 #find sift keypoints and descriptors
-kpl, desl = feature_detect.detectAndCompute(imgl_gray,None)
-kpr, desr = feature_detect.detectAndCompute(imgr_gray,None)
+kpl, desl = feature_detect.detectAndCompute(imgl_gray, None)
+kpr, desr = feature_detect.detectAndCompute(imgr_gray, None)
 
 
 #create matcher
@@ -140,7 +137,7 @@ good_matches = []
 for i in range(len(matches)):
     m = matches[i][0]
     n = matches[i][1]
-    if m.distance <= 0.7*n.distance:
+    if m.distance <= 0.8*n.distance:
         ptsr.append(kpr[m.trainIdx].pt)
         ptsl.append(kpl[m.queryIdx].pt)
         good_matches.append([m])
@@ -155,16 +152,15 @@ matched_image = cv.drawMatchesKnn(imgl, kpl, imgr, kpr, good_matches,None,flags=
 cv.imshow('img',matched_image)
 cv.waitKey(0)
 
-iterations = 200
+# custom ransac for finding the fundamental matrix.
+iterations = 500
 min_average = 1000.0
 min_std = 1000.0
 my_F = []
 for i in range(iterations):
-    # custom ransac for finding the fundamental matrix.
     rand_list = random.sample(range(len(ptsl)), 36)
     ##calculate the fundamental matrix using the 8 point algorithm
-    F, mask = cv.findFundamentalMat(ptsl[rand_list], ptsr[rand_list], cv.FM_8POINT)
-    #F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_RANSAC,1,0.99)
+    F_temp, mask = cv.findFundamentalMat(ptsl[rand_list], ptsr[rand_list], cv.FM_8POINT)
 
     #ptsl = ptsl[mask.ravel()==1]
     #ptsr = ptsr[mask.ravel()==1]
@@ -176,18 +172,21 @@ for i in range(iterations):
         ptr = ptsr[i]
 
         #compute math
-        ql = np.array([ptl[0],ptl[1],1.0])
-        qr = np.array([ptr[0],ptr[1],1.0])
+        ql = np.array([ptl[0], ptl[1], 1.0])
+        qr = np.array([ptr[0], ptr[1], 1.0])
 
-        x = np.matmul(ql,F)
+        #epipolar constraint (ql*F*qr=0)
+        x = np.matmul(ql, F_temp)
         x2 = np.matmul(x, np.transpose(qr))
         results.append(x2)
     #check to see if average and std of epipolar constraint is less than previous iteration
-    if (np.average(results) < min_average) and (np.std(results) < min_std):
+    if (np.abs(np.average(results)) < min_average) and (np.std(results) < min_std):
         min_std = np.std(results)
-        min_average = np.average(results)
-        my_F = F
+        min_average = np.abs(np.average(results))
+        my_F = F_temp
 
+    #F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_RANSAC,1,0.99)
+F = my_F
 print('Fundamental Matrix')
 print(F)
 print('Rank of F')
@@ -243,28 +242,27 @@ print(R2)
 
 ##create the projection matricies P0 and P1 for both images
 P0 = np.array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]).reshape(3,4)
-print(P0)
 P1_1 = np.append(R,T,1)
 P1_2 = np.append(R2,T,1)
 P1_3 = np.append(R,-T,1)
 P1_4 = np.append(R2,-T,1)
+Ps = [P1_4,P1_2,P1_3,P1_1]
 
 ##estimate the reprojection error for both cameras
 
 ##triangulate the 3d Points using the linear least square triangulation technique
 test_point0 = ptsl[20]
 test_point1 = ptsr[20]
-my_point = LinearLSTriangulationSVD(test_point0,P0,test_point1,P1_1)
-print(my_point)
-my_point = LinearLSTriangulationSVD(test_point0,P0,test_point1,P1_2)
-print(my_point)
-my_point = LinearLSTriangulationSVD(test_point0,P0,test_point1,P1_3)
-print(my_point)
-my_point = LinearLSTriangulationSVD(test_point0,P0,test_point1,P1_4)
-print(my_point)
+final_projection_matrix = []
+for p in Ps:
+    my_point = LinearLSTriangulation(test_point0,P0,test_point1,p)
+    print(my_point)
+    if my_point[2] > 0:
+        final_projection_matrix = p
+        break
 
 #pointcloud structure is x,y,z,rgbvalue
-xyz_points, color_list = transform_points_with_color(ptsl,imgl,ptsr,imgr,P0,P1_1)
+xyz_points, color_list = transform_points_with_color(ptsl, imgl, ptsr, imgr, P0, p)
 
 ##save to PCD file with features' dominant color
 point_cloud = SavePCDToFile(xyz_points, color_list)
@@ -275,12 +273,20 @@ point_cloud = SavePCDToFile(xyz_points, color_list)
 
 ##visualize 3d point cloud with open3D
 #http://www.open3d.org/docs/release/tutorial/visualization/visualization.html
-view_vector1 = np.array([2.1813, 2.0619, 2.0999], np.float64)
-view_vector2 = np.array([-0.4999, -0.1659, -0.8499], np.float64)
-o3d.visualization.draw_geometries([point_cloud])
 
-#frontal
+#views obtained from ctrl c on image pane
+#frontal view
+zoom1 = 0.69999
+front1 =  [0.019389693763850271, -0.038613667447797664, -0.9990660761240846 ]
+lookat1 = [ 587.08365758879688, 412.70946511723417, 15.156177125134349 ]
+up1 = [ 0.13986525728641819, -0.98932334292501301, 0.040951592739251669 ]
 
-#top
+o3d.visualization.draw_geometries([point_cloud],zoom=zoom1, front=front1, lookat=lookat1,up=up1)
 
-#side
+#top view
+zoom2 = 0.6999
+front2 = [ 0.087476422901735171, -0.95787774863490005, -0.27352896392603882 ]
+lookat2 = [ 587.08365758879688, 412.70946511723417, 15.156177125134349 ]
+up2 = [ 0.012757439294041883, -0.27348181919386999, 0.96179256719579109 ]
+o3d.visualization.draw_geometries([point_cloud],zoom=zoom2, front=front2, lookat=lookat2,up=up2)
+
