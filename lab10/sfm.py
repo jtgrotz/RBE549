@@ -5,6 +5,7 @@ from scipy.linalg import svd
 import open3d as o3d
 import random
 
+
 #function for saving saved points and colors as a point cloud.
 #pc is a nx3 array of the x,y,z points
 #color_list is a nx3 array of the same size with the rgb values
@@ -57,7 +58,7 @@ def LinearLSTriangulationSVD(u0,P0,u1,P1):
     #size 4
     #value = (VT.T[:,3])
     value = (VT[:, 3])
-    return value[0:3]
+    return 100*(value[0:3].reshape(3,1))
 
 #function that takes a point and an image, and returns the average of the four adjacent pixel colors
 def get_average_color(pt,image):
@@ -92,7 +93,30 @@ def transform_points_with_color(ptsl,imgl,ptsr,imgr,P0,P1):
 
     return xyz_points, point_colors
 
+def reprojection_error(X,pt,P):
+    new_pt = np.matmul(P, np.append(X,1).reshape(4,1))
+    error = np.square(np.linalg.norm(pt[0]-new_pt[0]))+np.square(np.linalg.norm(pt[1]-new_pt[1]))
+    return error
 
+#function that triangulates each point, and counts whether it is in front of both cameras.
+def check_infront(ptsl,ptsr,P0,P1):
+    pts_infront = 0
+    c1_error = 0
+    c2_error = 0
+    for i in range(len(ptsl)):
+        curr_pt = LinearLSTriangulation(ptsl[i], P0, ptsr[i], P1)
+        #calculate the reprojection error for each camera
+        c1_error += reprojection_error(curr_pt,ptsl[i],P0)
+        c2_error += reprojection_error(curr_pt, ptsr[i], P1)
+        R3_C1 = P0[2, 0:3]
+        T_C1 = P0[:, 3].reshape(3, 1)
+        R3_C2 = P1[2,0:3]
+        T_C2 = P1[:,3].reshape(3,1)
+        if np.matmul(R3_C1,(curr_pt-T_C1)) > 0:
+            pts_infront += 1
+        if np.matmul(R3_C2,(curr_pt-T_C2)) > 0:
+            pts_infront += 1
+    return pts_infront, c1_error, c2_error
 
 ##calibrate my webcam using chessboard method.
 #lab 8 camera calibration code
@@ -105,7 +129,7 @@ dist_coeff = np.load('distortion_coefficients.npy')
 #import images here
 imgr = cv.imread('books_r.png')
 imgr_gray = cv.cvtColor(imgr,cv.COLOR_BGR2GRAY)
-imgl = cv.imread('books_l.png')
+imgl = cv.imread('books_l3.png')
 imgl_gray = cv.cvtColor(imgl, cv.COLOR_BGR2GRAY)
 
 ##extract features (sift or surf) find correspondence
@@ -149,21 +173,26 @@ ptsr = np.float32(ptsr)
 
 #find and show matches between each image
 matched_image = cv.drawMatchesKnn(imgl, kpl, imgr, kpr, good_matches,None,flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+cv.imwrite('matched_image.png',matched_image)
 cv.imshow('img',matched_image)
 cv.waitKey(0)
 
 # custom ransac for finding the fundamental matrix.
 iterations = 500
-min_average = 1000.0
-min_std = 1000.0
+#min_average = 1000.0
+#min_std = 1000.0
+sigma = 0.08
+final_inlier_pts = []
 my_F = []
+max_inliers = 0
 for i in range(iterations):
-    rand_list = random.sample(range(len(ptsl)), 36)
+    inliers = 0
+    inlier_pts = []
+    rand_list = random.sample(range(len(ptsl)), 32)
     ##calculate the fundamental matrix using the 8 point algorithm
     F_temp, mask = cv.findFundamentalMat(ptsl[rand_list], ptsr[rand_list], cv.FM_8POINT)
 
-    #ptsl = ptsl[mask.ravel()==1]
-    #ptsr = ptsr[mask.ravel()==1]
+
     #verify  qr^T * F * ql = 0
     results = []
     for i in range(len(ptsl)):
@@ -173,29 +202,39 @@ for i in range(iterations):
 
         #compute math
         ql = np.array([ptl[0], ptl[1], 1.0])
-        qr = np.array([ptr[0], ptr[1], 1.0])
+        qr = np.array([ptr[0], ptr[1], 1.0]).reshape(3,1)
 
         #epipolar constraint (ql*F*qr=0)
         x = np.matmul(ql, F_temp)
-        x2 = np.matmul(x, np.transpose(qr))
-        results.append(x2)
-    #check to see if average and std of epipolar constraint is less than previous iteration
-    if (np.abs(np.average(results)) < min_average) and (np.std(results) < min_std):
-        min_std = np.std(results)
-        min_average = np.abs(np.average(results))
+        x2 = np.matmul(x, qr)
+        #check if epipolar constraint is satified to a small sigma.
+        if abs(x2) <= sigma:
+            inliers += 1
+            inlier_pts.append(i)
+            results.append(x2)
+    #check to see if there are more inliers that other iterations
+    if inliers > max_inliers:
+        max_inliers = inliers
+        final_inlier_pts = inlier_pts.copy()
         my_F = F_temp
-
-    #F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_RANSAC,1,0.99)
+#check to see if average and std of epipolar constraint is less than previous iteration
+#    if (np.abs(np.average(results)) < min_average) and (np.std(results) < min_std):
+#        min_std = np.std(results)
+#        min_average = np.abs(np.average(results))
+#        my_F = F_temp
+print("Inliers")
+print(max_inliers)
+F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_RANSAC,1,0.99)
 F = my_F
 print('Fundamental Matrix')
 print(F)
 print('Rank of F')
 print(np.linalg.matrix_rank(F))
 print('Epipolar Testing')
-print('Average')
-print(np.average(results))
-print('STD')
-print(np.std(results))
+
+#filtering only good points
+ptsl = ptsl[final_inlier_pts]
+ptsr = ptsr[final_inlier_pts]
 
 ##using the M and K of the camera, calculate the essential matrix E
 #E = K' F K
@@ -210,6 +249,15 @@ print(np.round(detE,3))
 ##extract the R and T from E using decomposition
 #E = UDV^T
 U,S,VT = svd(E)
+print("Singular values of E")
+print(S)
+
+#refactor with ideal singular values
+#E_bar = np.matmul(U,np.matmul(np.array([1,0,0,0,1,0,0,0,0]).reshape(3,3),VT))
+#U,S,VT = svd(E_bar)
+print(U)
+print(S)
+print(VT)
 
 #Tx = [u1 x u2]x
 #T is also the third column of the U matrix
@@ -248,21 +296,46 @@ P1_3 = np.append(R,-T,1)
 P1_4 = np.append(R2,-T,1)
 Ps = [P1_4,P1_2,P1_3,P1_1]
 
-##estimate the reprojection error for both cameras
 
 ##triangulate the 3d Points using the linear least square triangulation technique
-test_point0 = ptsl[20]
-test_point1 = ptsr[20]
+#test_point0 = ptsl[20]
+#test_point1 = ptsr[20]
+
+#check the cheriality constraint to see if points are in front of both cameras.
 final_projection_matrix = []
+max_cheriality_pts = 0
+final_P = []
+final_c1_error_r = 0
+final_c2_error_r = 0
 for p in Ps:
-    my_point = LinearLSTriangulation(test_point0,P0,test_point1,p)
-    print(my_point)
-    if my_point[2] > 0:
+    curr_pts_infront, c1_reprojection_error, c2_reprojection_error = check_infront(ptsl,ptsr,P0,p)
+    print(curr_pts_infront)
+    ##estimate the reprojection error for both cameras
+    print("Left Camera Reprojection Error")
+    print(c1_reprojection_error)
+    print("Right Camera Reprojection Error")
+    print(c2_reprojection_error)
+    if curr_pts_infront > max_cheriality_pts:
+        max_cheriality_pts = curr_pts_infront
         final_projection_matrix = p
-        break
+        final_c1_error_r = c1_reprojection_error
+        final_c2_error_r = c2_reprojection_error
+
+print("Final Choice Left Camera Reprojection Error")
+print(c1_reprojection_error)
+print("Final Choice Right Camera Reprojection Error")
+print(c2_reprojection_error)
+
+#for p in Ps:
+    #my_point = LinearLSTriangulation(test_point0,P0,test_point1,p)
+    #print(my_point)
+    #if my_point[2] > 0:
+        #final_projection_matrix = p
+        #break
 
 #pointcloud structure is x,y,z,rgbvalue
 xyz_points, color_list = transform_points_with_color(ptsl, imgl, ptsr, imgr, P0, p)
+
 
 ##save to PCD file with features' dominant color
 point_cloud = SavePCDToFile(xyz_points, color_list)
@@ -281,7 +354,8 @@ front1 =  [0.019389693763850271, -0.038613667447797664, -0.9990660761240846 ]
 lookat1 = [ 587.08365758879688, 412.70946511723417, 15.156177125134349 ]
 up1 = [ 0.13986525728641819, -0.98932334292501301, 0.040951592739251669 ]
 
-o3d.visualization.draw_geometries([point_cloud],zoom=zoom1, front=front1, lookat=lookat1,up=up1)
+#o3d.visualization.draw_geometries([point_cloud],zoom=zoom1, front=front1, lookat=lookat1,up=up1)
+o3d.visualization.draw_geometries([point_cloud])
 
 #top view
 zoom2 = 0.6999
