@@ -129,6 +129,7 @@ def check_infront(ptsl,ptsr,P0,P1):
         #calculate the reprojection error for each camera
         c1_error += reprojection_error(curr_pt,ptsl[i],P0)
         c2_error += reprojection_error(curr_pt, ptsr[i], P1)
+        #computes cherilaity constraint. r3(X-C) > 0
         R3_C1 = P0[2, 0:3]
         T_C1 = P0[:, 3].reshape(3, 1)
         R3_C2 = P1[2,0:3]
@@ -262,11 +263,6 @@ for i in range(iterations):
         max_inliers = inliers
         final_inlier_pts = inlier_pts.copy()
         my_F = F_temp
-#check to see if average and std of epipolar constraint is less than previous iteration
-#    if (np.abs(np.average(results)) < min_average) and (np.std(results) < min_std):
-#        min_std = np.std(results)
-#        min_average = np.abs(np.average(results))
-#        my_F = F_temp
 print("Inliers")
 print(max_inliers)
 #F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_RANSAC,1,0.99)
@@ -362,8 +358,6 @@ Ps = [P1_4,P1_2,P1_3,P1_1]
 
 
 ##triangulate the 3d Points using the linear least square triangulation technique
-#test_point0 = ptsl[20]
-#test_point1 = ptsr[20]
 
 #check the cheriality constraint to see if points are in front of both cameras.
 final_projection_matrix = []
@@ -390,12 +384,6 @@ print(c1_reprojection_error)
 print("Final Choice Right Camera Reprojection Error")
 print(c2_reprojection_error)
 
-#for p in Ps:
-    #my_point = LinearLSTriangulation(test_point0,P0,test_point1,p)
-    #print(my_point)
-    #if my_point[2] > 0:
-        #final_projection_matrix = p
-        #break
 
 #pointcloud structure is x,y,z,rgbvalue
 xyz_points, color_list = transform_points_with_color(ptsl, imgl, ptsr, imgr, P0, p)
@@ -418,8 +406,7 @@ front1 =  [0.019389693763850271, -0.038613667447797664, -0.9990660761240846 ]
 lookat1 = [ 587.08365758879688, 412.70946511723417, 15.156177125134349 ]
 up1 = [ 0.13986525728641819, -0.98932334292501301, 0.040951592739251669 ]
 
-#o3d.visualization.draw_geometries([point_cloud],zoom=zoom1, front=front1, lookat=lookat1,up=up1)
-o3d.visualization.draw_geometries([point_cloud])
+o3d.visualization.draw_geometries([point_cloud],zoom=zoom1, front=front1, lookat=lookat1,up=up1)
 
 #top view
 zoom2 = 0.6999
