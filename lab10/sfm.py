@@ -1,3 +1,4 @@
+import cv2
 import cv2 as cv
 import numpy as np
 import calibrate_camera
@@ -60,6 +61,26 @@ def LinearLSTriangulationSVD(u0,P0,u1,P1):
     value = (VT[:, 3])
     return 100*(value[0:3].reshape(3,1))
 
+#function for solving trangualtion using Least Squares
+def LinearLSTriangulation2(u0,P0,u1,P1):
+    # define each row for readability
+    R1 = np.array([u0[0] * P0[2][0] - P0[0][0], u0[0] * P0[2][1] - P0[0][1], u0[0] * P0[2][2] - P0[0][2],
+                   u0[0] * P0[2][3] - P0[0][3]])
+    R2 = np.array([u0[1] * P0[2][0] - P0[1][0], u0[1] * P0[2][1] - P0[1][1], u0[1] * P0[2][2] - P0[1][2],
+                   u0[1] * P0[2][3] - P0[1][3]])
+    R3 = np.array([u1[0] * P1[2][0] - P1[0][0], u1[0] * P1[2][1] - P1[0][1], u1[0] * P1[2][2] - P1[0][2],
+                   u1[0] * P1[2][3] - P1[0][3]])
+    R4 = np.array([u1[1] * P1[2][0] - P1[1][0], u1[1] * P1[2][1] - P1[1][1], u1[1] * P1[2][2] - P1[1][2],
+                   u1[1] * P1[2][3] - P1[1][3]])
+
+    # create form Ax = 0
+    A = np.array([R1, R2, R3, R4])
+    B = np.array([0,0,0,1]).reshape(4,1)
+
+    X_Prime = np.matmul(np.linalg.inv(np.matmul(A.T, A)), (np.matmul(A.T, B)))
+    print(X_Prime)
+    return X_Prime[0:3]
+
 #function that takes a point and an image, and returns the average of the four adjacent pixel colors
 def get_average_color(pt,image):
     int_pt = np.int16(pt)
@@ -118,6 +139,22 @@ def check_infront(ptsl,ptsr,P0,P1):
             pts_infront += 1
     return pts_infront, c1_error, c2_error
 
+def drawlines(img1,img2,lines,pts1,pts2):
+    ''' img1 - image on which we draw the epilines for the points in img2
+        lines - corresponding epilines '''
+    r,c = img1.shape
+    img1 = cv.cvtColor(img1,cv.COLOR_GRAY2BGR)
+    img2 = cv.cvtColor(img2,cv.COLOR_GRAY2BGR)
+    for r,pt1,pt2 in zip(lines,pts1,pts2):
+        color = tuple(np.random.randint(0,255,3).tolist())
+        x0,y0 = map(int, [0, -r[2]/r[1] ])
+        x1,y1 = map(int, [c, -(r[2]+r[0]*c)/r[1] ])
+        img1 = cv.line(img1, (x0,y0), (x1,y1), color,1)
+        img1 = cv.circle(img1,tuple(pt1),5,color,-1)
+        img2 = cv.circle(img2,tuple(pt2),5,color,-1)
+    return img1,img2
+
+
 ##calibrate my webcam using chessboard method.
 #lab 8 camera calibration code
 calibrate_camera
@@ -134,13 +171,21 @@ imgl_gray = cv.cvtColor(imgl, cv.COLOR_BGR2GRAY)
 
 ##extract features (sift or surf) find correspondence
 #create sift instance
+
 feature_detect = cv.SIFT_create()
-#feature_detect = cv.xfeatures2d.SURF_create(400)
+#feature_detect = cv.xfeatures2d.SURF_create(250)
 
 #find sift keypoints and descriptors
 kpl, desl = feature_detect.detectAndCompute(imgl_gray, None)
 kpr, desr = feature_detect.detectAndCompute(imgr_gray, None)
 
+l_features = imgl.copy()
+r_features = imgr.copy()
+
+l_features = cv.drawKeypoints(imgl,kpl,l_features,cv.DrawMatchesFlags_DRAW_RICH_KEYPOINTS)
+r_features = cv.drawKeypoints(imgr,kpr,r_features,cv.DrawMatchesFlags_DRAW_RICH_KEYPOINTS)
+cv.imwrite('imgl_feature.png',l_features)
+cv.imwrite('imgr_feature.png',r_features)
 
 #create matcher
 #create FLANN matcher
@@ -178,17 +223,17 @@ cv.imshow('img',matched_image)
 cv.waitKey(0)
 
 # custom ransac for finding the fundamental matrix.
-iterations = 500
-#min_average = 1000.0
-#min_std = 1000.0
-sigma = 0.08
+iterations = 800
+
+#sigma value for noisy epipolar constraint
+sigma = 0.5
 final_inlier_pts = []
 my_F = []
 max_inliers = 0
 for i in range(iterations):
     inliers = 0
     inlier_pts = []
-    rand_list = random.sample(range(len(ptsl)), 32)
+    rand_list = random.sample(range(len(ptsl)), 64)
     ##calculate the fundamental matrix using the 8 point algorithm
     F_temp, mask = cv.findFundamentalMat(ptsl[rand_list], ptsr[rand_list], cv.FM_8POINT)
 
@@ -224,7 +269,7 @@ for i in range(iterations):
 #        my_F = F_temp
 print("Inliers")
 print(max_inliers)
-F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_RANSAC,1,0.99)
+#F, mask = cv.findFundamentalMat(ptsl, ptsr, cv.FM_RANSAC,1,0.99)
 F = my_F
 print('Fundamental Matrix')
 print(F)
@@ -236,10 +281,29 @@ print('Epipolar Testing')
 ptsl = ptsl[final_inlier_pts]
 ptsr = ptsr[final_inlier_pts]
 
+#visualize epilines and poles
+#find epilines of second image visualized on first image
+#lines1 = cv.computeCorrespondEpilines(ptsr.reshape(-1,1,2), 2,F)
+#lines1 = lines1.reshape(-1,3)
+#img5,img6 = drawlines(imgl_gray,imgr_gray,lines1,np.int32(ptsl),np.int32(ptsr))
+#cv.imshow('right',img5)
+
+#find epilines of first image visualized on the second image
+#lines2 = cv.computeCorrespondEpilines(ptsl.reshape(-1, 1, 2), 1, F)
+#lines2 = lines2.reshape(-1, 3)
+#img3, img4 = drawlines(imgr_gray, imgl_gray, lines2,np.int32(ptsr), np.int32(ptsl))
+#cv.imshow('left',img3)
+#cv.waitKey(0)
+
 ##using the M and K of the camera, calculate the essential matrix E
 #E = K' F K
 KTF = np.matmul(np.transpose(camera_matrix),F)
 E = np.matmul(KTF, camera_matrix)
+print("Essential Matrix")
+print(E)
+
+#E2, mask = cv.findEssentialMat(ptsl,ptsr,camera_matrix,cv2.RANSAC,0.99,0.1)
+#print(E2)
 
 #verify determinant of E is 0
 detE = np.linalg.det(E)
@@ -253,8 +317,8 @@ print("Singular values of E")
 print(S)
 
 #refactor with ideal singular values
-#E_bar = np.matmul(U,np.matmul(np.array([1,0,0,0,1,0,0,0,0]).reshape(3,3),VT))
-#U,S,VT = svd(E_bar)
+E_bar = np.matmul(U,np.matmul(np.array([1,0,0,0,1,0,0,0,0]).reshape(3,3),VT))
+U,S,VT = svd(E_bar)
 print(U)
 print(S)
 print(VT)
