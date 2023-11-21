@@ -83,7 +83,8 @@ svm.setType(cv.ml.SVM_C_SVC)
 svm.setC(12)
 svm.setGamma(0.5)
 
-svm.train(trainData,cv.ml.ROW_SAMPLE, responses)
+#svm.train(trainData,cv.ml.ROW_SAMPLE, responses)
+svm.trainAuto(trainData,cv.ml.ROW_SAMPLE, responses)
 
 #deskew, form hog vectors, and set as test data, and generate responses
 deskewed2 = [deskew(i) for i in test_cells]
