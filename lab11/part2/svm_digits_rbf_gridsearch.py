@@ -63,7 +63,7 @@ def GridSearch(c,gamma, train_data, train_responses, test_data, test_responses):
         for curr_g in gamma:
             # create SVM with right parameters
             svm = cv.ml.SVM_create()
-            svm.setKernel(cv.ml.SVM_LINEAR)
+            svm.setKernel(cv.ml.SVM_RBF)
             svm.setType(cv.ml.SVM_C_SVC)
             svm.setC(curr_c)
             svm.setGamma(curr_g)
