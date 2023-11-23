@@ -95,34 +95,34 @@ digits = cv.imread('digits.png', cv.IMREAD_GRAYSCALE)
 cells = [np.hsplit(row,100) for row in np.vsplit(digits,50)]
 
 #shuffle data points
-#shuffled_cells, shuffled_labels = shuffle(cells)
+shuffled_cells, shuffled_labels = shuffle(cells)
 
 #set train and test
-#train_cells = shuffled_cells[:trainnum]
-#test_cells = shuffled_cells[trainnum:]
-train_cells = [ i[:50] for i in cells]
-test_cells = [ i[50:] for i in cells]
+train_cells = shuffled_cells[:trainnum]
+test_cells = shuffled_cells[trainnum:]
+#train_cells = [ i[:50] for i in cells]
+#test_cells = [ i[50:] for i in cells]
 
 #shuffle
 
 #deskew, form hog vectors, and set as train data, and generate responses
-#deskewed = [deskew(i) for i in train_cells]
-#hogdata = [hog(i) for i in deskewed]
-deskewed = [list(map(deskew,row)) for row in train_cells]
-hogdata = [list(map(hog,row)) for row in deskewed]
+deskewed = [deskew(i) for i in train_cells]
+hogdata = [hog(i) for i in deskewed]
+#deskewed = [list(map(deskew,row)) for row in train_cells]
+#hogdata = [list(map(hog,row)) for row in deskewed]
 trainData = np.float32(hogdata).reshape(-1,64)
-#responses = shuffled_labels[:trainnum]
-responses = np.repeat(np.arange(10),250)[:,np.newaxis]
+responses = shuffled_labels[:trainnum]
+#responses = np.repeat(np.arange(10),250)[:,np.newaxis]
 
 
 #deskew, form hog vectors, and set as test data, and generate responses
-#deskewed2 = [deskew(i) for i in test_cells]
-#hogdata2 = [hog(i) for i in deskewed2]
-deskewed = [list(map(deskew,row)) for row in test_cells]
-hogdata2 = [list(map(hog,row)) for row in deskewed]
+deskewed2 = [deskew(i) for i in test_cells]
+hogdata2 = [hog(i) for i in deskewed2]
+#deskewed = [list(map(deskew,row)) for row in test_cells]
+#hogdata2 = [list(map(hog,row)) for row in deskewed]
 testData = np.float32(hogdata2).reshape(-1,bin_num*4)
-#test_responses = shuffled_labels[trainnum:]
-test_responses = np.repeat(np.arange(10),250)[:,np.newaxis]
+test_responses = shuffled_labels[trainnum:]
+#test_responses = np.repeat(np.arange(10),250)[:,np.newaxis]
 
 C = [1, 20, 150, 900]
 GAMMA = [0.2, 0.4, 0.6, 0.8, 0.9, 1.2, 1.5, 1.7]
@@ -131,15 +131,26 @@ accuracy, c_set, g_set = GridSearch(C,GAMMA,trainData,responses,testData,test_re
 print(accuracy)
 print(np.max(accuracy))
 
+accuracy = np.array(accuracy).reshape(4,-1)
+#2d Plotting
+for i in range(len(C)):
+    my_C = C[i]
+    plt.plot(GAMMA,accuracy[i,:])
+
+plt.xlabel('Gamma')
+plt.ylabel('Accuracy')
+plt.title('Accuracy vs C and Gamma Value')
+plt.legend([str(r) for r in C])
+plt.show()
 
 #3D scatter plotting
-ax = plt.axes(projection='3d')
+#ax = plt.axes(projection='3d')
 
-ax.scatter3D(c_set,g_set,accuracy,c=accuracy)
-ax.set_ylabel('Gammas')
-ax.set_xlabel('Cs')
-ax.set_zlabel('Accuracy in %')
-plt.show()
+#ax.scatter3D(c_set,g_set,accuracy,c=accuracy)
+#ax.set_ylabel('Gammas')
+#ax.set_xlabel('Cs')
+#ax.set_zlabel('Accuracy in %')
+#plt.show()
 
 
 
