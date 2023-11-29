@@ -1,4 +1,4 @@
-import keras
+from tensorflow import keras
 import numpy as np
 
 #crate layers with 1 input that outputs one output
