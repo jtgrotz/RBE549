@@ -8,7 +8,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras.models import Sequential
 
-already_trained = 1
+already_trained = 0
 
 if already_trained == 0:
     #import data
@@ -80,14 +80,14 @@ if already_trained == 0:
     ])
 
     #compile model
-    model.compile(optimizer='adam',
+    model.compile(optimizer='RMSprop',
                   loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
 
     model.summary()
 
     #train model
-    epochs = 15
+    epochs = 20
     history = model.fit(
         train_ds,
         validation_data = val_ds,
