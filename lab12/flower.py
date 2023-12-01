@@ -8,7 +8,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras.models import Sequential
 
-already_trained = 0
+already_trained = 1
 
 if already_trained == 0:
     #import data
@@ -67,7 +67,7 @@ if already_trained == 0:
     model = Sequential([
         data_aug,
         layers.Rescaling(1./255, input_shape=(img_height,img_width, 3)),
-        layers.Conv2D(16,3, padding='same', activation='relu'),
+        layers.Conv2D(32,3, padding='same', activation='relu'),
         layers.MaxPooling2D(),
         layers.Conv2D(32,3, padding='same', activation='relu'),
         layers.MaxPooling2D(),
@@ -124,12 +124,16 @@ while vid.isOpened():
     predictions = model.predict(img_array)
     score = tf.nn.softmax(predictions[0])
     guess_class = class_names[np.argmax(score)]
+    #display confidence of guess
+    confidence = np.round(100*np.max(score),3)
     print(guess_class)
+    print(confidence)
+    results_string = guess_class + " :"+ str(confidence) + "%"
 
     #visualize results
-    cv.rectangle(resized_image,(0,0),(int(vid_height/6),int(vid_width/10)),(255,0,0),-1)
-    cv.putText(resized_image, guess_class, (0,30),font,1,(255,255,255),2,cv.LINE_AA)
-    cv.imshow('flower', resized_image)
+    cv.rectangle(img,(0,0),(int(vid_height),int(vid_width/10)),(255,0,0),-1)
+    cv.putText(img, results_string, (0,30),font,1,(255,255,255),2,cv.LINE_AA)
+    cv.imshow('flower', img)
 
 #   wait for escape key to exit app
     k = cv.waitKey(50) & 0xFF
