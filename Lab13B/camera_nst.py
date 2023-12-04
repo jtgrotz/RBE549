@@ -1,4 +1,6 @@
 import os
+
+import keras
 import tensorflow as tf
 # Load compressed models from tensorflow_hub
 os.environ['TFHUB_MODEL_LOAD_FORMAT'] = 'COMPRESSED'
@@ -14,6 +16,9 @@ import numpy as np
 import PIL.Image
 import time
 import functools
+
+#1 if you want to train the model, 0 is you want to load the previously trained model
+train_model = 0
 
 #function to convert the network tensor to an image
 def tensor_to_image(tensor):
@@ -108,6 +113,7 @@ def gram_matrix(input_tensor):
 
 
 #define the model for style
+@keras.saving.register_keras_serializable()
 class StyleContentModel(tf.keras.models.Model):
   def __init__(self, style_layers, content_layers):
     super(StyleContentModel, self).__init__()
@@ -140,75 +146,94 @@ class StyleContentModel(tf.keras.models.Model):
 
 
 #create new model and run extractor
-extractor = StyleContentModel(style_layers, content_layers)
+if train_model == 1:
+    extractor = StyleContentModel(style_layers, content_layers)
 
-results = extractor(tf.constant(content_image))
+    results = extractor(tf.constant(content_image))
 
-#run style transfer modelling
-style_targets = extractor(style_image)['style']
-content_targets = extractor(content_image)['content']
-#initialize image variable
-image = tf.Variable(content_image)
+    #run style transfer modelling
+    style_targets = extractor(style_image)['style']
+    content_targets = extractor(content_image)['content']
+    #initialize image variable
+    image = tf.Variable(content_image)
 
-#keep values between 0 and 1
-def clip_0_1(image):
-  return tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
+    #keep values between 0 and 1
+    def clip_0_1(image):
+      return tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
 
-#form compiler for model
-opt = tf.keras.optimizers.Adam(learning_rate=0.02, beta_1=0.99, epsilon=1e-1)
+    #form compiler for model
+    opt = tf.keras.optimizers.Adam(learning_rate=0.02, beta_1=0.99, epsilon=1e-1)
 
-#define two losses
-style_weight=1e-2
-content_weight=1e4
+    #define two losses
+    style_weight=1e-2
+    content_weight=1e4
 
-#define loss function
-def style_content_loss(outputs):
-    style_outputs = outputs['style']
-    content_outputs = outputs['content']
-    style_loss = tf.add_n([tf.reduce_mean((style_outputs[name]-style_targets[name])**2)
-                           for name in style_outputs.keys()])
-    style_loss *= style_weight / num_style_layers
+    #define loss function
+    def style_content_loss(outputs):
+        style_outputs = outputs['style']
+        content_outputs = outputs['content']
+        style_loss = tf.add_n([tf.reduce_mean((style_outputs[name]-style_targets[name])**2)
+                               for name in style_outputs.keys()])
+        style_loss *= style_weight / num_style_layers
 
-    content_loss = tf.add_n([tf.reduce_mean((content_outputs[name]-content_targets[name])**2)
-                             for name in content_outputs.keys()])
-    content_loss *= content_weight / num_content_layers
-    loss = style_loss + content_loss
-    return loss
+        content_loss = tf.add_n([tf.reduce_mean((content_outputs[name]-content_targets[name])**2)
+                                 for name in content_outputs.keys()])
+        content_loss *= content_weight / num_content_layers
+        loss = style_loss + content_loss
+        return loss
 
-#define training step function
-@tf.function()
-def train_step(image):
-  total_variation_weight = 30
-  with tf.GradientTape() as tape:
-    outputs = extractor(image)
-    loss = style_content_loss(outputs)
-    #additional loss to remove high frequency content
-    loss += total_variation_weight*tf.image.total_variation(image)
+    #define training step function
+    @tf.function()
+    def train_step(image):
+      total_variation_weight = 30
+      with tf.GradientTape() as tape:
+        outputs = extractor(image)
+        loss = style_content_loss(outputs)
+        #additional loss to remove high frequency content
+        loss += total_variation_weight*tf.image.total_variation(image)
 
-  grad = tape.gradient(loss, image)
-  opt.apply_gradients([(grad, image)])
-  image.assign(clip_0_1(image))
+      grad = tape.gradient(loss, image)
+      opt.apply_gradients([(grad, image)])
+      image.assign(clip_0_1(image))
 
 
-#perform optimization
-import time
-start = time.time()
+    #perform optimization
+    import time
+    start = time.time()
 
-epochs = 5
-steps_per_epoch = 50
+    epochs = 2
+    steps_per_epoch = 25
 
-step = 0
-for n in range(epochs):
-  for m in range(steps_per_epoch):
-    step += 1
-    train_step(image)
-    print(".", end='', flush=True)
-  display.clear_output(wait=True)
-  display.display(tensor_to_image(image))
-  print("Train step: {}".format(step))
+    step = 0
+    for n in range(epochs):
+      for m in range(steps_per_epoch):
+        step += 1
+        train_step(image)
+        print(".", end='', flush=True)
+      display.clear_output(wait=True)
+      display.display(tensor_to_image(image))
+      print("Train step: {}".format(step))
 
-end = time.time()
-print("Total time: {:.1f}".format(end-start))
+    end = time.time()
+    print("Total time: {:.1f}".format(end-start))
 
-file_name = 'stylized-image.png'
-tensor_to_image(image).save(file_name)
+    extractor.save('styler.keras')
+
+    file_name = 'stylized-image.png'
+    tensor_to_image(image).save(file_name)
+elif train_model == 0:
+    #because the trained model is so slow, this option uses a faster pretrained model for real time image styling
+    #test it on another image.
+    #set up camera here
+    cat_image = load_img('cat.jpg')
+    file_name = 'stylized-image2.png'
+
+    #import module for faster image styling
+    import tensorflow_hub as hub
+    hub_model = hub.load('https://tfhub.dev/google/magenta/arbitrary-image-stylization-v1-256/2')
+    style_image = hub_model(tf.constant(cat_image), tf.constant(style_image))[0]
+    tensor_to_image(style_image).save(file_name)
+    #show styled image
+    plt.imshow(tensor_to_image(style_image))
+    plt.show()
+
