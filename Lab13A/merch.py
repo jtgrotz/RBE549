@@ -13,9 +13,20 @@ zip_ref = zipfile.ZipFile(local_zip, 'r')
 zip_ref.extractall('/tmp/')
 zip_ref.close()
 
+model_type = 'vgg'
+#model_type = 'inception'
 
-BATCH_SIZE = 10
-IMG_SIZE = (299, 299)
+#choose image size based on model type
+if model_type == 'inception':
+    BATCH_SIZE = 10
+    IMG_SIZE = (299, 299)
+    dim = 299
+
+elif model_type == 'vgg':
+    BATCH_SIZE = 10
+    IMG_SIZE = (224, 224)
+    dim = 224
+
 
 train_dataset = tf.keras.utils.image_dataset_from_directory('/tmp/MerchData/',
                                                             labels="inferred",
@@ -54,20 +65,29 @@ AUTOTUNE = tf.data.AUTOTUNE
 train_dataset = train_dataset.prefetch(buffer_size=AUTOTUNE)
 validation_dataset = validation_dataset.prefetch(buffer_size=AUTOTUNE)
 
-#load the pretrained model and freeze it
-IMG_SHAPE = IMG_SIZE + (3,)
-base_model = tf.keras.applications.InceptionV3(input_shape=IMG_SHAPE,
-                                               include_top=False,
+#load the pretrained model and freeze it, choose between model types
+if model_type == 'inception':
+    IMG_SHAPE = IMG_SIZE + (3,)
+    base_model = tf.keras.applications.InceptionV3(input_shape=IMG_SHAPE,
+                                                   include_top=False,
+                                                   weights='imagenet')
+elif model_type == 'vgg':
+    IMG_SHAPE = IMG_SIZE + (3,)
+    base_model = tf.keras.applications.VGG19(input_shape=IMG_SHAPE,
+                                                   include_top=False,
+                                                   weights='imagenet')
 
-                                               weights='imagenet')
 
 base_model.summary()
 
 #freeze the initial layer
 base_model.trainable = False
 
-#image preprocessing function from model
-pre_processing = tf.keras.applications.inception_v3.preprocess_input
+#image preprocessing function from model, choose between models
+if model_type == 'inception':
+    pre_processing = tf.keras.applications.inception_v3.preprocess_input
+elif model_type == 'vgg':
+    pre_processing = tf.keras.applications.vgg19.preprocess_input
 
 #create data augmentation layers
 translation_range = (-0.15, 0.15)
@@ -89,7 +109,7 @@ global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
 dense_layer = tf.keras.layers.Dense(classes)
 
 #build the new model
-inputs =  tf.keras.Input(shape=(299,299,3))
+inputs =  tf.keras.Input(shape=(dim,dim,3))
 x = data_augmentation(inputs)
 x = pre_processing(x)
 x = base_model(x, training=False)
