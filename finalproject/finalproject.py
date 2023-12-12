@@ -6,6 +6,22 @@ import mediapipe as mp
 import tensorflow as tf
 
 
+#load in effect images
+thumbs = cv.imread('thumbsup.png')
+laser = cv.imread('lasershow.png')
+peace = cv.imread('peacesign.png')
+stop = cv.imread('stopsign.png')
+
+#video width
+vid_width = 640
+vid_height = 480
+
+#animation characterisitcs
+#number of frames gesture must be held for before effect is shows
+gesture_count = 10
+#number of frames the effect lasts for
+effect_count = 50
+
 
 #import media pipe model
 mp_model = mp.solutions.hands
@@ -23,10 +39,99 @@ f.close()
 print('hand gesture options')
 print(hand_gestures)
 
+#function for altering color of image to showcase different effect moods
+def tint_color(frame, red, blue, green):
+    frame[:,:,0] = cv.add(frame[:,:,0], blue)
+    frame[:, :, 1] = cv.add(frame[:, :, 1], green)
+    frame[:, :, 2] = cv.add(frame[:, :, 2], red)
+    return frame
+
+#merges two images together with a diminishing opacity
+def replace_panel(frame, image, size, center_point, count):
+    weight = (count/effect_count)*0.8
+    #determine if effect fits.
+    width = int(size[0]/2)
+    height = int(size[1]/2)
+    if size[0] == 512:
+        #rotate image for added fun
+        rotM = cv.getRotationMatrix2D((int(512/2),int(512/2)),count,1.3)
+        rot_image = cv.warpAffine(image,rotM, (512,512))
+        # resize effect to full frame
+        image = cv.resize(rot_image, (frame.shape[1], frame.shape[0]))
+        altered_frame = cv.addWeighted(frame, 1-weight, image, weight,0)
+        #return for visualization
+        return altered_frame
+    else:
+        #if within the drawable limits
+        if center_point[0] > width and center_point[1] > height:
+            if center_point[0] < vid_width - width and center_point[1] < vid_height - height:
+                ROI = frame[center_point[1]-width:center_point[1]+width, center_point[0]-height:center_point[0]+height,:]
+                #create mask of effect
+                image_gray = cv.cvtColor(image, cv.COLOR_RGB2GRAY)
+                ret, mask = cv.threshold(image_gray, 10, 255, cv.THRESH_BINARY)
+                mask_inv = cv.bitwise_not(mask)
+
+                #apply mask to both images
+                bg = cv.bitwise_and(ROI,ROI,mask=mask_inv)
+                fg = cv.bitwise_and(image,image,mask=mask)
+
+                #add image and effect
+                #altered_ROI = cv.addWeighted(ROI, 1.0-weight, image, weight, 0.0)
+                altered_ROI = cv.addWeighted(bg, 1, fg, weight, 0.0)
+
+                frame[center_point[1]-width:center_point[1]+width, center_point[0]-height:center_point[0]+height,:] = altered_ROI
+
+    return frame
+
+
+
 
 #function for drawing the effect in the frame
-def draw_effect(frame, gesture, frame_count):
-    return None
+def draw_effect(frame, gesture, hand_points, frame_count):
+    #determine what effect to draw
+    size = (100,100)
+    if gesture == 'thumbs up':
+        #set effect
+        effect = thumbs
+        #set spot effect should occur
+        center = hand_points[4]
+
+    elif gesture == 'thumbs down':
+        effect = cv.flip(thumbs, 0)
+        # set spot effect should occur
+        center = hand_points[4]
+
+    elif gesture == 'stop':
+        # set effect
+        effect = stop
+        # set spot effect should occur
+        center = hand_points[5]
+        #pre add color tint
+        frame = tint_color(frame, 40, -40, -40)
+
+    elif gesture == 'peace':
+        # set effect
+        effect = peace
+        # set spot effect should occur
+        center = hand_points[8]
+        # pre add color tint
+        frame = tint_color(frame, -40, -40, 40)
+
+    elif gesture == 'rock':
+        # set effect
+        effect = laser
+        # set spot effect should occur
+        center = (0,0)
+        size = (512,512)
+        #pre add color tint
+        frame = tint_color(frame, -40, 40, -40)
+    else:
+        return frame
+
+    #draw effect
+    altered_frame = replace_panel(frame, effect, size, center, frame_count)
+    #determine if size of effect will fit in location
+    return altered_frame
 
 
 #create camera object
@@ -34,15 +139,12 @@ vid = cv2.VideoCapture(0)
 vid.set(cv.CAP_PROP_FRAME_WIDTH, 512)
 vid.set(cv.CAP_PROP_FRAME_HEIGHT, 512)
 
-#number of frames gesture must be held for before effect is shows
-gesture_count = 10
 
-#number of frames the effect lasts for
-effect_count = 50
 
 #init variables for tracking current position in gesture counting and effect tracking
 curr_gesture_count = 0
 curr_effect_count = effect_count
+last_landmarks = []
 #false if not drawing effect true if
 drawing_effect_flag = False
 curr_gesture = 'nothing'
@@ -88,10 +190,10 @@ while vid.isOpened():
                 classID = np.argmax(predictions)
                 my_class = hand_gestures[classID]
 
-                if classID == curr_gesture:
+                if my_class == curr_gesture:
                     curr_gesture_count += 1
                 else:
-                    curr_gesture = classID
+                    curr_gesture = my_class
                     curr_gesture_count = 1
 
     #if in animation phase
@@ -101,7 +203,7 @@ while vid.isOpened():
             print('Drawing effect')
             print(curr_effect_count)
             #draw the effect and decrement animation counter
-            draw_effect(frame, curr_gesture, curr_effect_count)
+            frame = draw_effect(frame, curr_gesture, last_landmarks, curr_effect_count)
             curr_effect_count -= 1
 
         else:
@@ -114,6 +216,7 @@ while vid.isOpened():
     #if true start animation phase and reset gesture count
     if curr_gesture_count >= gesture_count:
         drawing_effect_flag = True
+        last_landmarks = landmarks
         curr_gesture_count = 0
         print('drawing effect')
 
