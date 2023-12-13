@@ -6,6 +6,8 @@ import mediapipe as mp
 import tensorflow as tf
 
 
+verbose_visualization = False
+
 #load in effect images
 thumbs = cv.imread('thumbsup.png')
 laser = cv.imread('lasershow.png')
@@ -20,7 +22,7 @@ vid_height = 480
 #number of frames gesture must be held for before effect is shows
 gesture_count = 10
 #number of frames the effect lasts for
-effect_count = 50
+effect_count = 45
 
 
 #import media pipe model
@@ -52,7 +54,7 @@ def replace_panel(frame, image, size, center_point, count):
     #determine if effect fits.
     width = int(size[0]/2)
     height = int(size[1]/2)
-    if size[0] == 512:
+    if size[0] > 100:
         #rotate image for added fun
         rotM = cv.getRotationMatrix2D((int(512/2),int(512/2)),count,1.3)
         rot_image = cv.warpAffine(image,rotM, (512,512))
@@ -66,8 +68,6 @@ def replace_panel(frame, image, size, center_point, count):
         if center_point[1] > width and center_point[0] > height:
             if center_point[1] < vid_width - width and center_point[0] < vid_height - height:
                 ROI = frame[center_point[1]-width:center_point[1]+width, center_point[0]-height:center_point[0]+height,:]
-                print(ROI.shape)
-                print(image.shape)
 
                 #code used for doing a pure masking approach
                 #create mask of effect
@@ -129,7 +129,7 @@ def draw_effect(frame, gesture, hand_points, frame_count):
         center = (0,0)
         size = (effect.shape[0],effect.shape[1])
         #pre add color tint
-        frame = tint_color(frame, -40, 40, -40)
+        frame = tint_color(frame, -20, 20, -20)
     else:
         return frame
 
@@ -182,9 +182,10 @@ while vid.isOpened():
                 lmy = int(lm.y * vid_height)
 
                 landmarks.append([lmx, lmy])
-
-            #draw landmarks on the frame
-            visualizer.draw_landmarks(frame, handslms, mp_model.HAND_CONNECTIONS)
+            #only draw if flag set
+            if verbose_visualization:
+                #draw landmarks on the frame
+                visualizer.draw_landmarks(frame, handslms, mp_model.HAND_CONNECTIONS)
 
         #if not in animation phase track gesture
         if not drawing_effect_flag:
@@ -220,15 +221,18 @@ while vid.isOpened():
 
     #track count of continuous gesture holding
     #if true start animation phase and reset gesture count
+    #save variables for visualization
     if curr_gesture_count >= gesture_count:
         drawing_effect_flag = True
         last_landmarks = landmarks
         curr_gesture_count = 0
         print('drawing effect')
 
-        # show the prediction on the frame
-    cv2.putText(frame, my_class, (10, 50), cv2.FONT_HERSHEY_SIMPLEX,
-                1, (0, 0, 255), 2, cv2.LINE_AA)
+    #only draw if flag set
+    if verbose_visualization:
+            # show the prediction on the frame
+        cv2.putText(frame, my_class, (10, 50), cv2.FONT_HERSHEY_SIMPLEX,
+                    1, (0, 0, 255), 2, cv2.LINE_AA)
 
     cv2.imshow("Gesture Recognizer", frame)
 
