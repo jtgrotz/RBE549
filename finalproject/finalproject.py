@@ -48,7 +48,7 @@ def tint_color(frame, red, blue, green):
 
 #merges two images together with a diminishing opacity
 def replace_panel(frame, image, size, center_point, count):
-    weight = (count/effect_count)*0.8
+    weight = (count/effect_count)
     #determine if effect fits.
     width = int(size[0]/2)
     height = int(size[1]/2)
@@ -58,26 +58,30 @@ def replace_panel(frame, image, size, center_point, count):
         rot_image = cv.warpAffine(image,rotM, (512,512))
         # resize effect to full frame
         image = cv.resize(rot_image, (frame.shape[1], frame.shape[0]))
-        altered_frame = cv.addWeighted(frame, 1-weight, image, weight,0)
+        altered_frame = cv.addWeighted(frame, 1, image, weight,0)
         #return for visualization
         return altered_frame
     else:
         #if within the drawable limits
-        if center_point[0] > width and center_point[1] > height:
-            if center_point[0] < vid_width - width and center_point[1] < vid_height - height:
+        if center_point[1] > width and center_point[0] > height:
+            if center_point[1] < vid_width - width and center_point[0] < vid_height - height:
                 ROI = frame[center_point[1]-width:center_point[1]+width, center_point[0]-height:center_point[0]+height,:]
+                print(ROI.shape)
+                print(image.shape)
+
+                #code used for doing a pure masking approach
                 #create mask of effect
-                image_gray = cv.cvtColor(image, cv.COLOR_RGB2GRAY)
-                ret, mask = cv.threshold(image_gray, 10, 255, cv.THRESH_BINARY)
-                mask_inv = cv.bitwise_not(mask)
+                #image_gray = cv.cvtColor(image, cv.COLOR_RGB2GRAY)
+                #ret, mask = cv.threshold(image_gray, 10, 255, cv.THRESH_BINARY)
+                #mask_inv = cv.bitwise_not(mask)
 
                 #apply mask to both images
-                bg = cv.bitwise_and(ROI,ROI,mask=mask_inv)
-                fg = cv.bitwise_and(image,image,mask=mask)
+                #bg = cv.bitwise_and(ROI,ROI,mask=mask_inv)
+                #fg = cv.bitwise_and(image,image,mask=mask)
 
                 #add image and effect
-                #altered_ROI = cv.addWeighted(ROI, 1.0-weight, image, weight, 0.0)
-                altered_ROI = cv.addWeighted(bg, 1, fg, weight, 0.0)
+                altered_ROI = cv.addWeighted(ROI, 1, image, weight, 2)
+                #altered_ROI = cv.addWeighted(bg, 1, fg, weight, 0.0)
 
                 frame[center_point[1]-width:center_point[1]+width, center_point[0]-height:center_point[0]+height,:] = altered_ROI
 
@@ -89,7 +93,8 @@ def replace_panel(frame, image, size, center_point, count):
 #function for drawing the effect in the frame
 def draw_effect(frame, gesture, hand_points, frame_count):
     #determine what effect to draw
-    size = (100,100)
+    #size is the same for most effects
+    size = (thumbs.shape[0],thumbs.shape[1])
     if gesture == 'thumbs up':
         #set effect
         effect = thumbs
@@ -99,7 +104,7 @@ def draw_effect(frame, gesture, hand_points, frame_count):
     elif gesture == 'thumbs down':
         effect = cv.flip(thumbs, 0)
         # set spot effect should occur
-        center = hand_points[4]
+        center = hand_points[6]
 
     elif gesture == 'stop':
         # set effect
@@ -122,11 +127,12 @@ def draw_effect(frame, gesture, hand_points, frame_count):
         effect = laser
         # set spot effect should occur
         center = (0,0)
-        size = (512,512)
+        size = (effect.shape[0],effect.shape[1])
         #pre add color tint
         frame = tint_color(frame, -40, 40, -40)
     else:
         return frame
+
 
     #draw effect
     altered_frame = replace_panel(frame, effect, size, center, frame_count)
