@@ -5,7 +5,7 @@ import numpy as np
 import mediapipe as mp
 import tensorflow as tf
 
-
+#setting for showing current guess and landmark visualization
 verbose_visualization = False
 
 #load in effect images
@@ -32,9 +32,10 @@ visualizer = mp.solutions.drawing_utils
 
 #load in gesture recognizer model
 model = tf.keras.models.load_model('mp_hand_gesture')
+#Print summary of model architecture
+model.summary()
 
 #load in the class names
-#TODO change names
 f = open('gesture.names', 'r')
 hand_gestures = f.read().split('\n')
 f.close()
@@ -238,7 +239,9 @@ while vid.isOpened():
 
     # wait for escape key to exit app
     k = cv.waitKey(10) & 0xFF
-    if k == 27:
+    if k == ord('v'):
+        verbose_visualization = not verbose_visualization
+    elif k == 27:
         break
 
 # ensure video and recording are ended properly.
